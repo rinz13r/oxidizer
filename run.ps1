@@ -3,15 +3,13 @@ $originalDir = Get-Location
 
 try {
     # Build Rust library
-    Set-Location rust_lib
     cargo build
     if ($LASTEXITCODE -ne 0) {
         throw "Cargo build failed"
     }
     
     # Run .NET application
-    Set-Location ../DotnetApp
-    dotnet run
+    dotnet run --project DotnetApp\DotnetApp.csproj
     if ($LASTEXITCODE -ne 0) {
         throw "Dotnet run failed"
     }

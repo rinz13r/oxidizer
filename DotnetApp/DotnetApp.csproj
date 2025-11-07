@@ -9,10 +9,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\rust_lib\target\debug\rust_lib.dll">
+    <None Include="..\target\debug\rust_lib.dll" Condition=" '$(Configuration)' == 'Debug' ">
       <Link>rust_lib.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <None Include="..\target\release\rust_lib.dll" Condition=" '$(Configuration)' == 'Release' ">
+      <Link>rust_lib.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+
   </ItemGroup>
 
 </Project>

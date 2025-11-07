@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    # Core crates
+    "oxidize_core",
+    "oxidize_macro",
+
+    # Guest crates
+    "rust_lib",
+    "bindings-generator",
+]
+
+# Optional: specify resolver version (recommended for newer projects)
+resolver = "2"
+
+# Optional: workspace-wide dependencies that can be shared
+[workspace.dependencies]
+# Add common dependencies here if needed
