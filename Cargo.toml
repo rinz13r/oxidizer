@@ -6,7 +6,7 @@ members = [
 
     # Guest crates
     "rust_lib",
-    "bindings-generator",
+    "bindings-generator", "oxidize_generator",
 ]
 
 # Optional: specify resolver version (recommended for newer projects)

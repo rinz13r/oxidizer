@@ -1,59 +1,70 @@
+use derive_getters::Getters;
+use derive_new::new;
+
+pub mod impls;
 pub mod registry;
 
-pub struct StructLayout {}
+pub trait WireFunction {
+    fn get_function_signature() -> FunctionSignature;
+}
+
+pub struct FunctionSignature {
+    pub name: &'static str,
+    pub parameters: Vec<FunctionParameter>,
+    pub return_type: TypeInfo,
+}
+
+#[derive(new, Getters)]
+pub struct FunctionParameter {
+    #[getter(skip)]
+    name: &'static str,
+    ty: TypeInfo,
+}
+
+impl FunctionParameter {
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+}
 
 pub trait WireType {
     fn get_type_info() -> TypeInfo;
 }
 
-impl WireType for u64 {
-    fn get_type_info() -> TypeInfo {
-        TypeInfo {
-            name: "u64".to_string(),
-            size: 8,
-            fields: vec![],
-        }
-    }
-}
-
-impl StructLayout {
-    pub fn get_type_info() -> TypeInfo {
-        TypeInfo {
-            name: "FFITy".to_string(),
-            size: u64::get_type_info().size + u64::get_type_info().size,
-            fields: vec![
-                FieldInfo {
-                    name: "x".to_string(),
-                    offset: 0,
-                    size: 8,
-                    ty: u64::get_type_info(),
-                },
-                FieldInfo {
-                    name: "y".to_string(),
-                    offset: 8,
-                    size: 8,
-                    ty: u64::get_type_info(),
-                },
-            ],
-        }
-    }
-}
-
-struct FieldInfo {
-    pub name: String,
-    pub offset: u64,
+#[derive(Debug, Clone)]
+pub struct FieldInfo {
+    pub name: &'static str,
+    pub offset: usize,
     pub size: usize,
     pub ty: TypeInfo,
 }
 
-struct TypeInfo {
-    pub name: String,
-    pub size: u64,
+#[derive(Debug, Clone)]
+pub struct TypeInfo {
+    pub name: &'static str,
+    pub size: usize,
     pub fields: Vec<FieldInfo>,
+    pub kind: TypeKind,
 }
 
 impl TypeInfo {
     pub fn size(&self) -> usize {
         self.fields.iter().map(|f| f.size).sum()
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeKind {
+    U8,
+    U16,
+    U32,
+    U64,
+    I8,
+    I16,
+    I32,
+    I64,
+    F32,
+    F64,
+    Bool,
+    UserDefined,
 }

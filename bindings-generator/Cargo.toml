@@ -5,3 +5,5 @@ edition = "2024"
 
 [build-dependencies]
 rust_lib = { path = "../rust_lib" }
+oxidize_core = { path = "../oxidize_core" }
+oxidize_generator = { path = "../oxidize_generator" }
