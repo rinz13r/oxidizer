@@ -194,7 +194,7 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Generate different implementations based on whether function is async
     let expanded = if is_async {
         // For async functions, transform according to README strategy
-        let fn_name_internal = syn::Ident::new(&format!("{}_internal", fn_name), fn_name.span());
+        let fn_name_internal = syn::Ident::new(&format!("{fn_name}_internal"), fn_name.span());
 
         // Extract the return type for callback
         let return_type = match &input.sig.output {

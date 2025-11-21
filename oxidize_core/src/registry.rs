@@ -8,6 +8,12 @@ pub struct Registry {
     functions: Vec<FunctionInfo>,
 }
 
+impl Default for Registry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Registry {
     pub fn register_type<T: crate::WireType>(&mut self) -> &mut Self {
         let type_info = T::get_type_info();

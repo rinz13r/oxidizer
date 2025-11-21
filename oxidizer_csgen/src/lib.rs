@@ -81,33 +81,29 @@ impl CSharpGenerator {
         let class_name = self.get_registrar_class_name(return_type);
         let csharp_type = self.rust_type_to_csharp_type(return_type);
 
-        output.push_str(&format!("class {}\n{{\n", class_name));
+        output.push_str(&format!("class {class_name}\n{{\n"));
         output.push_str(&format!(
-            "    public static readonly {} Instance = new();\n\n",
-            class_name
+            "    public static readonly {class_name} Instance = new();\n\n"
         ));
 
         // Generate delegate
         output.push_str(&format!(
-            "    public delegate void CallbackDelegate(ulong id, {} result);\n\n",
-            csharp_type
+            "    public delegate void CallbackDelegate(ulong id, {csharp_type} result);\n\n"
         ));
 
         // Generate dictionary and other fields
         output.push_str(&format!(
-            "    private readonly Dictionary<ulong, Action<{}>> registrations = new();\n",
-            csharp_type
+            "    private readonly Dictionary<ulong, Action<{csharp_type}>> registrations = new();\n"
         ));
         output.push_str("    private ulong id = 0;\n");
         output.push_str("    private readonly object lockObj = new();\n\n");
 
         // Private constructor
-        output.push_str(&format!("    private {}()\n    {{\n    }}\n\n", class_name));
+        output.push_str(&format!("    private {class_name}()\n    {{\n    }}\n\n"));
 
         // Register method
         output.push_str(&format!(
-            "    public ulong Register(Action<{}> callback)\n",
-            csharp_type
+            "    public ulong Register(Action<{csharp_type}> callback)\n"
         ));
         output.push_str("    {\n");
         output.push_str("        ulong currentId;\n\n");
@@ -121,8 +117,7 @@ impl CSharpGenerator {
 
         // Static callback method
         output.push_str(&format!(
-            "    public static void Callback(ulong id, {} result)\n",
-            csharp_type
+            "    public static void Callback(ulong id, {csharp_type} result)\n"
         ));
         output.push_str("    {\n");
         output.push_str("        if (Instance.registrations.TryGetValue(id, out var callback))\n");
@@ -149,9 +144,9 @@ impl CSharpGenerator {
         output.push_str("{\n");
 
         for field in type_info.fields() {
-            let csharp_type = self.rust_type_to_csharp_type(&field.ty());
+            let csharp_type = self.rust_type_to_csharp_type(field.ty());
             let field_name = self.to_pascal_case(field.name());
-            output.push_str(&format!("    public {} {};\n", csharp_type, field_name));
+            output.push_str(&format!("    public {csharp_type} {field_name};\n"));
         }
 
         output.push_str("}\n");
@@ -166,8 +161,7 @@ impl CSharpGenerator {
 
         // Generate public async method
         output.push_str(&format!(
-            "    public static async Task<{}> {}(",
-            return_type, function_name
+            "    public static async Task<{return_type}> {function_name}("
         ));
 
         let params: Vec<String> = function
@@ -176,7 +170,7 @@ impl CSharpGenerator {
             .map(|param| {
                 let param_type = self.rust_type_to_csharp_type(param.ty());
                 let param_name = param.name().to_lowercase();
-                format!("{} {}", param_type, param_name)
+                format!("{param_type} {param_name}")
             })
             .collect();
 
@@ -185,14 +179,12 @@ impl CSharpGenerator {
 
         // Implementation
         output.push_str(&format!(
-            "        var tcs = new TaskCompletionSource<{}>();\n\n",
-            return_type
+            "        var tcs = new TaskCompletionSource<{return_type}>();\n\n"
         ));
         output.push_str(&format!(
-            "        var id = {}.Instance.Register(\n",
-            registrar_class
+            "        var id = {registrar_class}.Instance.Register(\n"
         ));
-        output.push_str(&format!("            ({} res) =>\n", return_type));
+        output.push_str(&format!("            ({return_type} res) =>\n"));
         output.push_str("            {\n");
         output.push_str("                tcs.SetResult(res);\n");
         output.push_str("            });\n\n");
@@ -205,7 +197,7 @@ impl CSharpGenerator {
                     .iter()
                     .map(|p| p.name().to_lowercase()),
             )
-            .chain(std::iter::once(format!("{}.Callback", registrar_class)))
+            .chain(std::iter::once(format!("{registrar_class}.Callback")))
             .collect();
 
         output.push_str(&format!(
@@ -223,10 +215,9 @@ impl CSharpGenerator {
         ));
 
         let internal_params: Vec<String> = std::iter::once("ulong id".to_string())
-            .chain(params.into_iter())
+            .chain(params)
             .chain(std::iter::once(format!(
-                "{}.CallbackDelegate cb",
-                registrar_class
+                "{registrar_class}.CallbackDelegate cb"
             )))
             .collect();
 
@@ -250,8 +241,7 @@ impl CSharpGenerator {
         ));
 
         output.push_str(&format!(
-            "    public static extern {} {}(",
-            return_type, function_name
+            "    public static extern {return_type} {function_name}("
         ));
 
         let params: Vec<String> = function
@@ -260,7 +250,7 @@ impl CSharpGenerator {
             .map(|param| {
                 let param_type = self.rust_type_to_csharp_type(param.ty());
                 let param_name = param.name().to_lowercase();
-                format!("{} {}", param_type, param_name)
+                format!("{param_type} {param_name}")
             })
             .collect();
 
@@ -272,7 +262,7 @@ impl CSharpGenerator {
 
     fn get_registrar_class_name(&self, return_type: &TypeInfo) -> String {
         let type_name = self.rust_type_to_csharp_name(return_type);
-        format!("Registrar_{}", type_name)
+        format!("Registrar_{type_name}")
     }
 
     fn rust_type_to_csharp_type(&self, rust_type: &TypeInfo) -> String {
@@ -289,7 +279,7 @@ impl CSharpGenerator {
             TypeKind::F64 => "double",
             TypeKind::Bool => "bool",
             TypeKind::Void => "void",
-            TypeKind::UserDefined => &rust_type.name(),
+            TypeKind::UserDefined => rust_type.name(),
         }
         .to_string()
     }
