@@ -43,12 +43,12 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     let field_type = &field.ty;
 
                     quote! {
-                        fields.push(oxidize_core::FieldInfo {
-                            name: #field_name_str,
-                            offset: offset,
-                            size: std::mem::size_of::<#field_type>(),
-                            ty: <#field_type as oxidize_core::WireType>::get_type_info(),
-                        });
+                        fields.push(oxidize_core::FieldInfo::new(
+                            #field_name_str,
+                            offset,
+                            std::mem::size_of::<#field_type>(),
+                            <#field_type as oxidize_core::WireType>::get_type_info(),
+                        ));
                         offset += std::mem::size_of::<#field_type>();
                     }
                 })
@@ -69,12 +69,12 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                         #(#field_generations)*
 
-                        oxidize_core::TypeInfo {
-                            name: #struct_name_str,
-                            size: std::mem::size_of::<Self>(),
+                        oxidize_core::TypeInfo::new(
+                            #struct_name_str,
+                            std::mem::size_of::<Self>(),
                             fields,
-                            kind: oxidize_core::TypeKind::UserDefined,
-                        }
+                            oxidize_core::TypeKind::UserDefined,
+                        )
                     }
                 }
             }
@@ -111,8 +111,8 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// }
 ///
 /// impl WireFunction for add {
-///     fn get_function_signature() -> oxidize_core::FunctionSignature {
-///         oxidize_core::FunctionSignature {
+///     fn get_function_info() -> oxidize_core::FunctionInfo {
+///         oxidize_core::FunctionInfo {
 ///             name: "add",
 ///             parameters: vec![u64::get_type_info(), u64::get_type_info()],
 ///             return_type: FFITy::get_type_info(),
@@ -121,13 +121,24 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// }
 /// ```
 #[proc_macro_attribute]
-pub fn ffi_function(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
 
     let fn_name = &input.sig.ident;
     let fn_name_str = fn_name.to_string();
     let fn_block = &input.block;
     let fn_inputs = &input.sig.inputs;
+    let is_async = input.sig.asyncness.is_some();
+
+    // Parse the attribute to get the runtime parameter
+    let runtime_expr = if attr.is_empty() {
+        // Default to Handle::current() if no runtime is provided
+        quote! { tokio::runtime::Handle::current() }
+    } else {
+        // Parse the provided runtime expression and get its handle
+        let runtime_tokens: proc_macro2::TokenStream = attr.into();
+        quote! { #runtime_tokens.handle() }
+    };
 
     // Extract parameter types for WireFunction implementation
     let param_types: Vec<_> = input
@@ -170,36 +181,115 @@ pub fn ffi_function(_attr: TokenStream, item: TokenStream) -> TokenStream {
         syn::ReturnType::Default => (
             quote! {},
             quote! {
-                oxidize_core::TypeInfo {
-                    name: "()",
-                    size: 0,
-                    fields: Vec::new(),
-                }
+                oxidize_core::TypeInfo::new(
+                    "()",
+                    0,
+                    Vec::new(),
+                    oxidize_core::TypeKind::Void,
+                )
             },
         ),
     };
 
-    let expanded = quote! {
-        // non_camel_case_types
+    // Generate different implementations based on whether function is async
+    let expanded = if is_async {
+        // For async functions, transform according to README strategy
+        let fn_name_internal = syn::Ident::new(&format!("{}_internal", fn_name), fn_name.span());
 
-        #[allow(non_camel_case_types)]
-        struct #fn_name;
+        // Extract the return type for callback
+        let return_type = match &input.sig.output {
+            syn::ReturnType::Type(_, ty) => quote! { #ty },
+            syn::ReturnType::Default => quote! { () },
+        };
 
-        impl #fn_name {
-            #[unsafe(export_name = #fn_name_str)]
-            pub extern "C" fn call(#fn_inputs) #call_return_type {
-                #fn_block
+        // Generate parameter names as expressions for the internal call
+        let param_exprs: Vec<_> = input
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| {
+                if let syn::FnArg::Typed(pat_type) = arg {
+                    if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
+                        Some(&pat_ident.ident)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Build the parameter list for the exported C function
+        let mut c_fn_params = vec![quote! { id: u64 }];
+        for input in &input.sig.inputs {
+            c_fn_params.push(quote! { #input });
+        }
+        c_fn_params.push(quote! { cb: extern "C" fn(u64, #return_type) });
+
+        quote! {
+            #[allow(non_camel_case_types)]
+            struct #fn_name;
+
+            impl #fn_name {
+                // Internal async function with original logic
+                async fn #fn_name_internal(#fn_inputs) #call_return_type {
+                    #fn_block
+                }
+
+                // Exported C function that takes id and callback
+                #[unsafe(export_name = #fn_name_str)]
+                pub extern "C" fn call(#(#c_fn_params),*) {
+                    // Use the provided runtime handle
+                    let rt = #runtime_expr;
+
+                    rt.spawn(async move {
+                        let result = Self::#fn_name_internal(#(#param_exprs),*).await;
+                        cb(id, result);
+                    });
+                }
+            }
+
+            impl oxidize_core::WireFunction for #fn_name {
+                fn get_function_info() -> oxidize_core::FunctionInfo {
+                    let mut parameters = vec![
+                        // oxidize_core::FunctionParameter::new("id", oxidize_core::TypeInfo::new("u64", 8, vec![], oxidize_core::TypeKind::U64)),
+                    ];
+                    #(parameters.push(oxidize_core::FunctionParameter::new(#param_names, <#param_types as oxidize_core::WireType>::get_type_info()));)*
+                    // parameters.push(oxidize_core::FunctionParameter::new("cb", oxidize_core::TypeInfo::new("callback", 8, vec![], oxidize_core::TypeKind::UserDefined)));
+
+                    oxidize_core::FunctionInfo::new(
+                        #fn_name_str,
+                        parameters,
+                        #wire_return_type,
+                        #is_async
+                    )
+                }
             }
         }
+    } else {
+        // For sync functions, keep original behavior
+        quote! {
+            #[allow(non_camel_case_types)]
+            struct #fn_name;
 
-        impl oxidize_core::WireFunction for #fn_name {
-            fn get_function_signature() -> oxidize_core::FunctionSignature {
-                oxidize_core::FunctionSignature {
-                    name: #fn_name_str,
-                    parameters: vec![
-                        #(oxidize_core::FunctionParameter::new(#param_names, <#param_types as oxidize_core::WireType>::get_type_info())),*
-                    ],
-                    return_type: #wire_return_type,
+            impl #fn_name {
+                #[unsafe(export_name = #fn_name_str)]
+                pub extern "C" fn call(#fn_inputs) #call_return_type {
+                    #fn_block
+                }
+            }
+
+            impl oxidize_core::WireFunction for #fn_name {
+                fn get_function_info() -> oxidize_core::FunctionInfo {
+                    oxidize_core::FunctionInfo::new(
+                        #fn_name_str,
+                        vec![
+                            #(oxidize_core::FunctionParameter::new(#param_names, <#param_types as oxidize_core::WireType>::get_type_info())),*
+                        ],
+                        #wire_return_type,
+                        #is_async
+                    )
                 }
             }
         }

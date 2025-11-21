@@ -4,9 +4,12 @@ members = [
     "oxidize_core",
     "oxidize_macro",
 
+    # Generator crates
+    "oxidizer_csgen",
+
     # Guest crates
     "rust_lib",
-    "bindings-generator", "oxidize_generator",
+    "bindings-generator"
 ]
 
 # Optional: specify resolver version (recommended for newer projects)
@@ -15,3 +18,5 @@ resolver = "2"
 # Optional: workspace-wide dependencies that can be shared
 [workspace.dependencies]
 # Add common dependencies here if needed
+derive-getters = "0.5.0"
+derive-new = "0.7.0"

@@ -5,13 +5,22 @@ pub mod impls;
 pub mod registry;
 
 pub trait WireFunction {
-    fn get_function_signature() -> FunctionSignature;
+    fn get_function_info() -> FunctionInfo;
 }
 
-pub struct FunctionSignature {
-    pub name: &'static str,
-    pub parameters: Vec<FunctionParameter>,
-    pub return_type: TypeInfo,
+#[derive(new, Getters)]
+pub struct FunctionInfo {
+    #[getter(skip)]
+    name: &'static str,
+    parameters: Vec<FunctionParameter>,
+    return_type: TypeInfo,
+    is_async: bool,
+}
+
+impl FunctionInfo {
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
 }
 
 #[derive(new, Getters)]
@@ -31,30 +40,43 @@ pub trait WireType {
     fn get_type_info() -> TypeInfo;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, new, Getters)]
 pub struct FieldInfo {
-    pub name: &'static str,
-    pub offset: usize,
-    pub size: usize,
-    pub ty: TypeInfo,
+    #[getter(skip)]
+    name: &'static str,
+    offset: usize,
+    size: usize,
+    ty: TypeInfo,
 }
 
-#[derive(Debug, Clone)]
+impl FieldInfo {
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+}
+
+#[derive(Debug, Clone, new, Getters)]
 pub struct TypeInfo {
-    pub name: &'static str,
-    pub size: usize,
-    pub fields: Vec<FieldInfo>,
-    pub kind: TypeKind,
+    #[getter(skip)]
+    name: &'static str,
+    size: usize,
+    fields: Vec<FieldInfo>,
+    kind: TypeKind,
 }
 
 impl TypeInfo {
-    pub fn size(&self) -> usize {
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
+    pub fn total_size(&self) -> usize {
         self.fields.iter().map(|f| f.size).sum()
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum TypeKind {
+    // Primitive types
     U8,
     U16,
     U32,
@@ -66,5 +88,10 @@ pub enum TypeKind {
     F32,
     F64,
     Bool,
+
+    // Unit/void type
+    Void,
+
+    // User-defined type
     UserDefined,
 }

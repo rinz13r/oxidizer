@@ -1,15 +1,136 @@
+using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 
-public static class FFIMethods
+class Registrar_double
 {
-    [StructLayout(LayoutKind.Sequential)]
-    public struct FFITy
+    public static readonly Registrar_double Instance = new();
+
+    public delegate void CallbackDelegate(ulong id, double result);
+
+    private readonly Dictionary<ulong, Action<double>> registrations = new();
+    private ulong id = 0;
+    private readonly object lockObj = new();
+
+    private Registrar_double()
     {
-        public ulong X;
-        public ulong Y;
     }
 
+    public ulong Register(Action<double> callback)
+    {
+        ulong currentId;
+
+        lock (lockObj)
+        {
+            currentId = id;
+            registrations[currentId] = callback;
+            id++;
+        }
+
+        return currentId;
+    }
+
+    public static void Callback(ulong id, double result)
+    {
+        if (Instance.registrations.TryGetValue(id, out var callback))
+        {
+            lock (Instance.lockObj)
+            {
+                Instance.registrations.Remove(id);
+            }
+            callback(result);
+        }
+    }
+}
+
+class Registrar_ulong
+{
+    public static readonly Registrar_ulong Instance = new();
+
+    public delegate void CallbackDelegate(ulong id, ulong result);
+
+    private readonly Dictionary<ulong, Action<ulong>> registrations = new();
+    private ulong id = 0;
+    private readonly object lockObj = new();
+
+    private Registrar_ulong()
+    {
+    }
+
+    public ulong Register(Action<ulong> callback)
+    {
+        ulong currentId;
+
+        lock (lockObj)
+        {
+            currentId = id;
+            registrations[currentId] = callback;
+            id++;
+        }
+
+        return currentId;
+    }
+
+    public static void Callback(ulong id, ulong result)
+    {
+        if (Instance.registrations.TryGetValue(id, out var callback))
+        {
+            lock (Instance.lockObj)
+            {
+                Instance.registrations.Remove(id);
+            }
+            callback(result);
+        }
+    }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public struct FFITy
+{
+    public ulong X;
+    public ulong Y;
+}
+
+public static class Bindings
+{
     [DllImport("rust_lib.dll", EntryPoint = "add", CallingConvention = CallingConvention.Cdecl)]
     public static extern FFITy Add(ulong x, ulong y);
+
+    public static async Task<double> CheckAsync1(int _param)
+    {
+        var tcs = new TaskCompletionSource<double>();
+
+        var id = Registrar_double.Instance.Register(
+            (double res) =>
+            {
+                tcs.SetResult(res);
+            });
+
+        CheckAsync1Internal(id, _param, Registrar_double.Callback);
+
+        return await tcs.Task;
+    }
+
+    [DllImport("rust_lib.dll", EntryPoint = "check_async_1", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void CheckAsync1Internal(ulong id, int _param, Registrar_double.CallbackDelegate cb);
+
+    public static async Task<ulong> CheckAsync2(int _param)
+    {
+        var tcs = new TaskCompletionSource<ulong>();
+
+        var id = Registrar_ulong.Instance.Register(
+            (ulong res) =>
+            {
+                tcs.SetResult(res);
+            });
+
+        CheckAsync2Internal(id, _param, Registrar_ulong.Callback);
+
+        return await tcs.Task;
+    }
+
+    [DllImport("rust_lib.dll", EntryPoint = "check_async_2", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void CheckAsync2Internal(ulong id, int _param, Registrar_ulong.CallbackDelegate cb);
 
 }

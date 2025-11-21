@@ -1,8 +1,11 @@
-use crate::FunctionSignature;
+use derive_getters::Getters;
 
+use crate::FunctionInfo;
+
+#[derive(Getters)]
 pub struct Registry {
     types: Vec<crate::TypeInfo>,
-    functions: Vec<FunctionSignature>,
+    functions: Vec<FunctionInfo>,
 }
 
 impl Registry {
@@ -14,7 +17,7 @@ impl Registry {
     }
 
     pub fn register_function<F: crate::WireFunction>(&mut self) -> &mut Self {
-        let function_signature = F::get_function_signature();
+        let function_signature = F::get_function_info();
         // Store function_signature in the registry
         self.functions.push(function_signature);
         self
@@ -25,13 +28,5 @@ impl Registry {
             types: Vec::new(),
             functions: Vec::new(),
         }
-    }
-
-    pub fn types(&self) -> &Vec<crate::TypeInfo> {
-        &self.types
-    }
-
-    pub fn functions(&self) -> &Vec<FunctionSignature> {
-        &self.functions
     }
 }

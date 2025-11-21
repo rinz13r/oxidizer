@@ -1,5 +1,5 @@
 [package]
-name = "oxidize_generator"
+name = "oxidizer_csgen"
 version = "0.1.0"
 edition = "2024"
 
