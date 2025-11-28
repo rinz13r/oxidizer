@@ -1,4 +1,4 @@
-use oxidize_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
+use oxidizer_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
 use std::collections::HashMap;
 
 pub struct CSharpGenerator {
@@ -306,7 +306,7 @@ impl CSharpGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oxidize_core::{FunctionInfo, FunctionParameter, TypeInfo, TypeKind};
+    use oxidizer_core::{FunctionInfo, FunctionParameter, TypeInfo, TypeKind};
 
     #[test]
     fn test_generate_registrar_class() {

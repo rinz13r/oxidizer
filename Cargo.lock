@@ -6,7 +6,7 @@ version = 4
 name = "bindings-generator"
 version = "0.1.0"
 dependencies = [
- "oxidize_core",
+ "oxidizer_core",
  "oxidizer_csgen",
  "rust_lib",
 ]
@@ -115,7 +115,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "oxidize_core"
+name = "oxidizer_core"
 version = "0.1.0"
 dependencies = [
  "derive-getters",
@@ -123,20 +123,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "oxidize_macro"
-version = "0.1.0"
-dependencies = [
- "oxidize_core",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "oxidizer_csgen"
 version = "0.1.0"
 dependencies = [
- "oxidize_core",
+ "oxidizer_core",
+]
+
+[[package]]
+name = "oxidizer_macro"
+version = "0.1.0"
+dependencies = [
+ "oxidizer_core",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -201,8 +201,8 @@ version = "0.1.0"
 dependencies = [
  "ctor",
  "lazy_static",
- "oxidize_core",
- "oxidize_macro",
+ "oxidizer_core",
+ "oxidizer_macro",
  "tokio",
 ]
 

@@ -1,4 +1,4 @@
-use oxidize_macro::{ffi_function, ffi_type};
+use oxidizer_macro::{ffi_function, ffi_type};
 mod heap_allocated;
 mod init;
 
@@ -32,7 +32,7 @@ pub struct FFITy {
     pub y: u64,
 }
 
-pub fn get_ffi_types_registry() -> oxidize_core::registry::Registry {
+pub fn get_ffi_types_registry() -> oxidizer_core::registry::Registry {
     let mut registry = heap_allocated::get_utils_registry();
 
     registry

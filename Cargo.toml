@@ -1,8 +1,8 @@
 [workspace]
 members = [
     # Core crates
-    "oxidize_core",
-    "oxidize_macro",
+    "oxidizer_core",
+    "oxidizer_macro",
 
     # Generator crates
     "oxidizer_csgen",

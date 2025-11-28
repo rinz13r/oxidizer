@@ -43,11 +43,11 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     let field_type = &field.ty;
 
                     quote! {
-                        fields.push(oxidize_core::FieldInfo::new(
+                        fields.push(oxidizer_core::FieldInfo::new(
                             #field_name_str,
                             offset,
                             std::mem::size_of::<#field_type>(),
-                            <#field_type as oxidize_core::WireType>::get_type_info(),
+                            <#field_type as oxidizer_core::WireType>::get_type_info(),
                         ));
                         offset += std::mem::size_of::<#field_type>();
                     }
@@ -62,18 +62,18 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     #fields
                 }
 
-                impl oxidize_core::WireType for #struct_name {
-                    fn get_type_info() -> oxidize_core::TypeInfo {
+                impl oxidizer_core::WireType for #struct_name {
+                    fn get_type_info() -> oxidizer_core::TypeInfo {
                         let mut fields = Vec::new();
                         let mut offset = 0;
 
                         #(#field_generations)*
 
-                        oxidize_core::TypeInfo::new(
+                        oxidizer_core::TypeInfo::new(
                             #struct_name_str,
                             std::mem::size_of::<Self>(),
                             fields,
-                            oxidize_core::TypeKind::UserDefined,
+                            oxidizer_core::TypeKind::UserDefined,
                         )
                     }
                 }
@@ -111,8 +111,8 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// }
 ///
 /// impl WireFunction for add {
-///     fn get_function_info() -> oxidize_core::FunctionInfo {
-///         oxidize_core::FunctionInfo {
+///     fn get_function_info() -> oxidizer_core::FunctionInfo {
+///         oxidizer_core::FunctionInfo {
 ///             name: "add",
 ///             parameters: vec![u64::get_type_info(), u64::get_type_info()],
 ///             return_type: FFITy::get_type_info(),
@@ -176,16 +176,16 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
     let (call_return_type, wire_return_type) = match &input.sig.output {
         syn::ReturnType::Type(arrow, ty) => (
             quote! { #arrow #ty },
-            quote! { <#ty as oxidize_core::WireType>::get_type_info() },
+            quote! { <#ty as oxidizer_core::WireType>::get_type_info() },
         ),
         syn::ReturnType::Default => (
             quote! {},
             quote! {
-                oxidize_core::TypeInfo::new(
+                oxidizer_core::TypeInfo::new(
                     "()",
                     0,
                     Vec::new(),
-                    oxidize_core::TypeKind::Void,
+                    oxidizer_core::TypeKind::Void,
                 )
             },
         ),
@@ -250,15 +250,15 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
 
-            impl oxidize_core::WireFunction for #fn_name {
-                fn get_function_info() -> oxidize_core::FunctionInfo {
+            impl oxidizer_core::WireFunction for #fn_name {
+                fn get_function_info() -> oxidizer_core::FunctionInfo {
                     let mut parameters = vec![
-                        // oxidize_core::FunctionParameter::new("id", oxidize_core::TypeInfo::new("u64", 8, vec![], oxidize_core::TypeKind::U64)),
+                        // oxidizer_core::FunctionParameter::new("id", oxidizer_core::TypeInfo::new("u64", 8, vec![], oxidizer_core::TypeKind::U64)),
                     ];
-                    #(parameters.push(oxidize_core::FunctionParameter::new(#param_names, <#param_types as oxidize_core::WireType>::get_type_info()));)*
-                    // parameters.push(oxidize_core::FunctionParameter::new("cb", oxidize_core::TypeInfo::new("callback", 8, vec![], oxidize_core::TypeKind::UserDefined)));
+                    #(parameters.push(oxidizer_core::FunctionParameter::new(#param_names, <#param_types as oxidizer_core::WireType>::get_type_info()));)*
+                    // parameters.push(oxidizer_core::FunctionParameter::new("cb", oxidizer_core::TypeInfo::new("callback", 8, vec![], oxidizer_core::TypeKind::UserDefined)));
 
-                    oxidize_core::FunctionInfo::new(
+                    oxidizer_core::FunctionInfo::new(
                         #fn_name_str,
                         parameters,
                         #wire_return_type,
@@ -280,12 +280,12 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
 
-            impl oxidize_core::WireFunction for #fn_name {
-                fn get_function_info() -> oxidize_core::FunctionInfo {
-                    oxidize_core::FunctionInfo::new(
+            impl oxidizer_core::WireFunction for #fn_name {
+                fn get_function_info() -> oxidizer_core::FunctionInfo {
+                    oxidizer_core::FunctionInfo::new(
                         #fn_name_str,
                         vec![
-                            #(oxidize_core::FunctionParameter::new(#param_names, <#param_types as oxidize_core::WireType>::get_type_info())),*
+                            #(oxidizer_core::FunctionParameter::new(#param_names, <#param_types as oxidizer_core::WireType>::get_type_info())),*
                         ],
                         #wire_return_type,
                         #is_async

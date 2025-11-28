@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-oxidize_core = { path = "../oxidize_core" }
+oxidizer_core = { path = "../oxidizer_core" }

@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-use oxidize_macro::{ffi_function, ffi_type};
+use oxidizer_macro::{ffi_function, ffi_type};
 
 #[ffi_function]
 pub extern "C" fn drop_heap_allocated(ha: HeapAllocatedRaw) {
@@ -51,8 +51,8 @@ impl Drop for HeapAllocatedRaw {
     }
 }
 
-pub fn get_utils_registry() -> oxidize_core::registry::Registry {
-    let mut registry = oxidize_core::registry::Registry::new();
+pub fn get_utils_registry() -> oxidizer_core::registry::Registry {
+    let mut registry = oxidizer_core::registry::Registry::new();
 
     registry
         .register_type::<HeapAllocatedRaw>()
