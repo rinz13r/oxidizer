@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices;
 
-var x = await Bindings.CheckAsync1(10);
+// var x = await Bindings.CheckAsync1(10);
+var ha = Bindings.HeapAllocCheck();
 
-Console.WriteLine($"1 + 2 = {x}");
+Bindings.DropHeapAllocated(ha);

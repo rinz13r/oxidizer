@@ -1,4 +1,5 @@
 use crate::{TypeInfo, TypeKind, WireType};
+use std::ffi::c_void;
 
 // Helper macro to implement WireType for primitive types
 macro_rules! impl_wire_type_primitive {
@@ -30,5 +31,7 @@ impl_wire_type_primitive! {
     i64 => ("i64", TypeKind::I64),
     f32 => ("f32", TypeKind::F32),
     f64 => ("f64", TypeKind::F64),
-    bool => ("bool", TypeKind::Bool)
+    bool => ("bool", TypeKind::Bool),
+    *mut c_void => ("*mut c_void", TypeKind::Pointer),
+    *const c_void => ("*const c_void", TypeKind::Pointer)
 }

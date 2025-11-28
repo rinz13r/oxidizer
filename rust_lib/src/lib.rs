@@ -1,20 +1,8 @@
 use oxidize_macro::{ffi_function, ffi_type};
+mod heap_allocated;
+mod init;
 
-lazy_static::lazy_static! {
-    static ref RT: tokio::runtime::Runtime = {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(8)
-            .enable_all()
-            .build()
-            .expect("Failed to create Tokio runtime")
-    };
-}
-
-#[ctor::ctor]
-fn init_runtime() {
-    // Force initialization of the runtime at library load time
-    lazy_static::initialize(&RT);
-}
+use init::RT;
 
 #[ffi_function]
 fn add(x: u64, y: u64) -> FFITy {
@@ -33,6 +21,11 @@ async fn check_async_2(_param: i32) -> u64 {
     42
 }
 
+#[ffi_function]
+fn heap_alloc_check() -> heap_allocated::HeapAllocatedRaw {
+    heap_allocated::HeapAllocatedRaw::new(FFITy { x: 10, y: 20 })
+}
+
 #[ffi_type]
 pub struct FFITy {
     pub x: u64,
@@ -40,13 +33,14 @@ pub struct FFITy {
 }
 
 pub fn get_ffi_types_registry() -> oxidize_core::registry::Registry {
-    let mut registry = oxidize_core::registry::Registry::new();
+    let mut registry = heap_allocated::get_utils_registry();
 
     registry
         .register_type::<FFITy>()
         .register_function::<add>()
         .register_function::<check_async_1>()
-        .register_function::<check_async_2>();
+        .register_function::<check_async_2>()
+        .register_function::<heap_alloc_check>();
 
     registry
 }

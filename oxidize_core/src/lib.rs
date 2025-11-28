@@ -88,6 +88,7 @@ pub enum TypeKind {
     F32,
     F64,
     Bool,
+    Pointer,
 
     // Unit/void type
     Void,

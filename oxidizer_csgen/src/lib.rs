@@ -279,6 +279,7 @@ impl CSharpGenerator {
             TypeKind::F64 => "double",
             TypeKind::Bool => "bool",
             TypeKind::Void => "void",
+            TypeKind::Pointer => "IntPtr",
             TypeKind::UserDefined => rust_type.name(),
         }
         .to_string()

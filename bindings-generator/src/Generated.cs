@@ -86,6 +86,13 @@ class Registrar_ulong
 }
 
 [StructLayout(LayoutKind.Sequential)]
+public struct HeapAllocatedRaw
+{
+    public IntPtr Ptr;
+    public IntPtr DropFn;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 public struct FFITy
 {
     public ulong X;
@@ -94,6 +101,9 @@ public struct FFITy
 
 public static class Bindings
 {
+    [DllImport("rust_lib.dll", EntryPoint = "drop_heap_allocated", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void DropHeapAllocated(HeapAllocatedRaw ha);
+
     [DllImport("rust_lib.dll", EntryPoint = "add", CallingConvention = CallingConvention.Cdecl)]
     public static extern FFITy Add(ulong x, ulong y);
 
@@ -132,5 +142,8 @@ public static class Bindings
 
     [DllImport("rust_lib.dll", EntryPoint = "check_async_2", CallingConvention = CallingConvention.Cdecl)]
     private static extern void CheckAsync2Internal(ulong id, int _param, Registrar_ulong.CallbackDelegate cb);
+
+    [DllImport("rust_lib.dll", EntryPoint = "heap_alloc_check", CallingConvention = CallingConvention.Cdecl)]
+    public static extern HeapAllocatedRaw HeapAllocCheck();
 
 }
