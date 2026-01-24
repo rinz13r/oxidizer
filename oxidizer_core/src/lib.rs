@@ -93,6 +93,9 @@ pub enum TypeKind {
     // Unit/void type
     Void,
 
-    // User-defined type
+    // User-defined type (value type, copied across FFI)
     UserDefined,
+
+    // Heap-allocated type (pointer passed across FFI, C# owns lifetime)
+    HeapAllocated,
 }

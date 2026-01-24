@@ -32,11 +32,26 @@ impl CSharpGenerator {
             output.push('\n');
         }
 
+        // Generate HeapAllocatedRaw struct (internal) and HeapHandle<T> class
+        output.push_str(&self.generate_heap_infrastructure());
+        output.push('\n');
+
         // Generate struct definitions
         for type_info in registry.types() {
-            if !type_info.fields().is_empty() {
-                output.push_str(&self.generate_struct(type_info));
-                output.push('\n');
+            match type_info.kind() {
+                TypeKind::HeapAllocated => {
+                    // For heap types, generate a marker struct (empty)
+                    output.push_str(&self.generate_marker_struct(type_info));
+                    output.push('\n');
+                }
+                TypeKind::UserDefined => {
+                    // For value types with fields, generate full struct
+                    if !type_info.fields().is_empty() {
+                        output.push_str(&self.generate_struct(type_info));
+                        output.push('\n');
+                    }
+                }
+                _ => {} // Primitives don't need struct generation
             }
         }
 
@@ -131,6 +146,75 @@ impl CSharpGenerator {
         output.push_str("}\n");
 
         output
+    }
+
+    /// Generate the HeapAllocatedRaw struct (internal) and HeapHandle<T> class
+    fn generate_heap_infrastructure(&self) -> String {
+        let mut output = String::new();
+
+        // Internal HeapAllocatedRaw struct
+        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
+        output.push_str("public struct HeapAllocatedRaw\n");
+        output.push_str("{\n");
+        output.push_str("    public IntPtr Ptr;\n");
+        output.push_str("    public IntPtr DropFn;\n");
+        output.push_str("}\n\n");
+
+        // Generic HeapHandle<T> class
+        output.push_str("/// <summary>\n");
+        output.push_str("/// Type-safe wrapper for heap-allocated Rust objects.\n");
+        output
+            .push_str("/// Implements IDisposable to ensure proper cleanup of native resources.\n");
+        output.push_str("/// </summary>\n");
+        output.push_str("public sealed class HeapHandle<T> : IDisposable\n");
+        output.push_str("{\n");
+        output.push_str("    private HeapAllocatedRaw _raw;\n");
+        output.push_str("    private bool _disposed;\n\n");
+
+        output.push_str("    internal HeapHandle(HeapAllocatedRaw raw) => _raw = raw;\n");
+        output.push_str("    internal HeapAllocatedRaw Raw => _raw;\n\n");
+
+        output.push_str("    public void Dispose()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_disposed) return;\n");
+        output.push_str("        _disposed = true;\n\n");
+        output.push_str("        if (_raw.Ptr != IntPtr.Zero)\n");
+        output.push_str("        {\n");
+        output.push_str("            Bindings.DropHeapAllocated(_raw);\n");
+        output.push_str("            _raw.Ptr = IntPtr.Zero;\n");
+        output.push_str("        }\n");
+        output.push_str("    }\n");
+        output.push_str("}\n");
+
+        output
+    }
+
+    /// Generate an empty marker struct for heap-only types
+    fn generate_marker_struct(&self, type_info: &TypeInfo) -> String {
+        let mut output = String::new();
+
+        // Extract the inner type name from HeapAllocated<T> format
+        let type_name = type_info.name();
+        let marker_name = self.extract_heap_inner_type(type_name);
+
+        output.push_str(&format!(
+            "/// <summary>Marker struct for heap-allocated {marker_name} instances.</summary>\n"
+        ));
+        output.push_str(&format!("public struct {marker_name} {{ }}\n"));
+
+        output
+    }
+
+    /// Extract inner type from "HeapAllocated<TypeName>" -> "TypeName"
+    fn extract_heap_inner_type(&self, type_name: &str) -> String {
+        if type_name.starts_with("HeapAllocated<") && type_name.ends_with(">") {
+            type_name["HeapAllocated<".len()..type_name.len() - 1].to_string()
+        } else if type_name.ends_with("HeapHandle") {
+            // Legacy format
+            type_name[..type_name.len() - "HeapHandle".len()].to_string()
+        } else {
+            type_name.to_string()
+        }
     }
 
     fn generate_struct(&self, type_info: &TypeInfo) -> String {
@@ -233,16 +317,7 @@ impl CSharpGenerator {
     fn generate_sync_function_binding(&self, function: &FunctionInfo) -> String {
         let mut output = String::new();
         let function_name = self.to_pascal_case(function.name());
-        let return_type = self.rust_type_to_csharp_type(function.return_type());
-
-        output.push_str(&format!(
-            "    [DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]\n",
-            self.library_name, function.name()
-        ));
-
-        output.push_str(&format!(
-            "    public static extern {return_type} {function_name}("
-        ));
+        let returns_heap = self.is_heap_type(function.return_type());
 
         let params: Vec<String> = function
             .parameters()
@@ -254,8 +329,52 @@ impl CSharpGenerator {
             })
             .collect();
 
-        output.push_str(&params.join(", "));
-        output.push_str(");\n");
+        if returns_heap {
+            // For heap-returning functions: private raw DllImport + public typed wrapper
+            let marker_type = self.get_heap_marker_type(function.return_type());
+
+            // Private raw DllImport
+            output.push_str(&format!(
+                "    [DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]\n",
+                self.library_name, function.name()
+            ));
+            output.push_str(&format!(
+                "    private static extern HeapAllocatedRaw {function_name}Raw({});\n\n",
+                params.join(", ")
+            ));
+
+            // Public typed wrapper
+            output.push_str(&format!(
+                "    public static HeapHandle<{marker_type}> {function_name}({})\n",
+                params.join(", ")
+            ));
+            output.push_str("    {\n");
+
+            let param_names: Vec<String> = function
+                .parameters()
+                .iter()
+                .map(|p| p.name().to_lowercase())
+                .collect();
+
+            output.push_str(&format!(
+                "        return new HeapHandle<{marker_type}>({function_name}Raw({}));\n",
+                param_names.join(", ")
+            ));
+            output.push_str("    }\n");
+        } else {
+            // Standard sync function binding
+            let return_type = self.rust_type_to_csharp_type(function.return_type());
+
+            output.push_str(&format!(
+                "    [DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]\n",
+                self.library_name, function.name()
+            ));
+
+            output.push_str(&format!(
+                "    public static extern {return_type} {function_name}({});\n",
+                params.join(", ")
+            ));
+        }
 
         output
     }
@@ -281,8 +400,21 @@ impl CSharpGenerator {
             TypeKind::Void => "void",
             TypeKind::Pointer => "IntPtr",
             TypeKind::UserDefined => rust_type.name(),
+            // For heap-allocated types, use HeapAllocatedRaw at FFI boundary
+            TypeKind::HeapAllocated => "HeapAllocatedRaw",
         }
         .to_string()
+    }
+
+    /// Check if a type is heap-allocated
+    fn is_heap_type(&self, type_info: &TypeInfo) -> bool {
+        matches!(type_info.kind(), TypeKind::HeapAllocated)
+    }
+
+    /// Get the marker type name for a heap handle
+    /// Extracts inner type from "HeapAllocated<T>" or legacy "THeapHandle" format
+    fn get_heap_marker_type(&self, type_info: &TypeInfo) -> String {
+        self.extract_heap_inner_type(type_info.name())
     }
 
     fn rust_type_to_csharp_name(&self, rust_type: &TypeInfo) -> String {

@@ -1,5 +1,5 @@
 use oxidizer_macro::{ffi_function, ffi_type};
-mod heap_allocated;
+pub mod heap_allocated;
 mod init;
 
 use init::RT;
@@ -22,12 +22,18 @@ async fn check_async_2(_param: i32) -> u64 {
 }
 
 #[ffi_function]
-fn heap_alloc_check() -> heap_allocated::HeapAllocatedRaw {
-    heap_allocated::HeapAllocatedRaw::new(FFITy { x: 10, y: 20 })
+fn heap_alloc_check() -> heap_allocated::HeapAllocated<FFIHeapTy> {
+    heap_allocated::HeapAllocated::new(FFIHeapTy { x: 10, y: 20 })
 }
 
 #[ffi_type]
 pub struct FFITy {
+    pub x: u64,
+    pub y: u64,
+}
+
+#[ffi_type(heap)]
+pub struct FFIHeapTy {
     pub x: u64,
     pub y: u64,
 }
@@ -37,6 +43,7 @@ pub fn get_ffi_types_registry() -> oxidizer_core::registry::Registry {
 
     registry
         .register_type::<FFITy>()
+        .register_type::<heap_allocated::HeapAllocated<FFIHeapTy>>()
         .register_function::<add>()
         .register_function::<check_async_1>()
         .register_function::<check_async_2>()

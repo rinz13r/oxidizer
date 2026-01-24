@@ -1,5 +1,6 @@
 use std::ffi::c_void;
 
+use oxidizer_core::{TypeInfo, WireType};
 use oxidizer_macro::{ffi_function, ffi_type};
 
 #[ffi_function]
@@ -54,9 +55,70 @@ impl Drop for HeapAllocatedRaw {
 pub fn get_utils_registry() -> oxidizer_core::registry::Registry {
     let mut registry = oxidizer_core::registry::Registry::new();
 
-    registry
-        .register_type::<HeapAllocatedRaw>()
-        .register_function::<drop_heap_allocated>();
+    // Register drop function so C# can call it to dispose heap allocations
+    registry.register_function::<drop_heap_allocated>();
 
     registry
+}
+
+/// Type-safe wrapper for heap-allocated values passed across FFI.
+///
+/// This is the public API for creating heap-allocated objects that can be
+/// passed to C#. The C# side receives this as `HeapHandle<T>`.
+#[repr(transparent)]
+pub struct HeapAllocated<T> {
+    inner: HeapAllocatedRaw,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T> HeapAllocated<T> {
+    /// Create a new heap-allocated value.
+    ///
+    /// The value is boxed and ownership is transferred to the FFI boundary.
+    /// The C# side is responsible for disposing the handle.
+    pub fn new(value: T) -> Self {
+        Self {
+            inner: HeapAllocatedRaw::new(value),
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Get a reference to the underlying value.
+    ///
+    /// # Safety
+    /// The caller must ensure T matches the actual type stored.
+    #[allow(dead_code)]
+    pub unsafe fn as_ref(&self) -> &T {
+        unsafe { self.inner.as_ref() }
+    }
+
+    /// Get a mutable reference to the underlying value.
+    ///
+    /// # Safety
+    /// The caller must ensure T matches the actual type stored.
+    #[allow(dead_code)]
+    pub unsafe fn as_mut(&mut self) -> &mut T {
+        unsafe { self.inner.as_mut() }
+    }
+}
+
+impl<T> WireType for HeapAllocated<T>
+where
+    T: WireType,
+{
+    fn get_type_info() -> TypeInfo {
+        // Get the inner type's info to build the HeapAllocated type name
+        let inner_type_info = T::get_type_info();
+        let type_name =
+            Box::leak(format!("HeapAllocated<{}>", inner_type_info.name()).into_boxed_str());
+
+        // HeapAllocated<T> has the same layout as HeapAllocatedRaw due to #[repr(transparent)]
+        let raw_info = HeapAllocatedRaw::get_type_info();
+        TypeInfo::new(
+            type_name,
+            raw_info.size().clone(),
+            raw_info.fields().clone(),
+            oxidizer_core::TypeKind::HeapAllocated,
+        )
+    }
 }

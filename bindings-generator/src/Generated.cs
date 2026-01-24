@@ -3,47 +3,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
-class Registrar_double
-{
-    public static readonly Registrar_double Instance = new();
-
-    public delegate void CallbackDelegate(ulong id, double result);
-
-    private readonly Dictionary<ulong, Action<double>> registrations = new();
-    private ulong id = 0;
-    private readonly object lockObj = new();
-
-    private Registrar_double()
-    {
-    }
-
-    public ulong Register(Action<double> callback)
-    {
-        ulong currentId;
-
-        lock (lockObj)
-        {
-            currentId = id;
-            registrations[currentId] = callback;
-            id++;
-        }
-
-        return currentId;
-    }
-
-    public static void Callback(ulong id, double result)
-    {
-        if (Instance.registrations.TryGetValue(id, out var callback))
-        {
-            lock (Instance.lockObj)
-            {
-                Instance.registrations.Remove(id);
-            }
-            callback(result);
-        }
-    }
-}
-
 class Registrar_ulong
 {
     public static readonly Registrar_ulong Instance = new();
@@ -85,11 +44,77 @@ class Registrar_ulong
     }
 }
 
+class Registrar_double
+{
+    public static readonly Registrar_double Instance = new();
+
+    public delegate void CallbackDelegate(ulong id, double result);
+
+    private readonly Dictionary<ulong, Action<double>> registrations = new();
+    private ulong id = 0;
+    private readonly object lockObj = new();
+
+    private Registrar_double()
+    {
+    }
+
+    public ulong Register(Action<double> callback)
+    {
+        ulong currentId;
+
+        lock (lockObj)
+        {
+            currentId = id;
+            registrations[currentId] = callback;
+            id++;
+        }
+
+        return currentId;
+    }
+
+    public static void Callback(ulong id, double result)
+    {
+        if (Instance.registrations.TryGetValue(id, out var callback))
+        {
+            lock (Instance.lockObj)
+            {
+                Instance.registrations.Remove(id);
+            }
+            callback(result);
+        }
+    }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 public struct HeapAllocatedRaw
 {
     public IntPtr Ptr;
     public IntPtr DropFn;
+}
+
+/// <summary>
+/// Type-safe wrapper for heap-allocated Rust objects.
+/// Implements IDisposable to ensure proper cleanup of native resources.
+/// </summary>
+public sealed class HeapHandle<T> : IDisposable
+{
+    private HeapAllocatedRaw _raw;
+    private bool _disposed;
+
+    internal HeapHandle(HeapAllocatedRaw raw) => _raw = raw;
+    internal HeapAllocatedRaw Raw => _raw;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_raw.Ptr != IntPtr.Zero)
+        {
+            Bindings.DropHeapAllocated(_raw);
+            _raw.Ptr = IntPtr.Zero;
+        }
+    }
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -98,6 +123,9 @@ public struct FFITy
     public ulong X;
     public ulong Y;
 }
+
+/// <summary>Marker struct for heap-allocated FFIHeapTy instances.</summary>
+public struct FFIHeapTy { }
 
 public static class Bindings
 {
@@ -144,6 +172,11 @@ public static class Bindings
     private static extern void CheckAsync2Internal(ulong id, int _param, Registrar_ulong.CallbackDelegate cb);
 
     [DllImport("rust_lib.dll", EntryPoint = "heap_alloc_check", CallingConvention = CallingConvention.Cdecl)]
-    public static extern HeapAllocatedRaw HeapAllocCheck();
+    private static extern HeapAllocatedRaw HeapAllocCheckRaw();
+
+    public static HeapHandle<FFIHeapTy> HeapAllocCheck()
+    {
+        return new HeapHandle<FFIHeapTy>(HeapAllocCheckRaw());
+    }
 
 }

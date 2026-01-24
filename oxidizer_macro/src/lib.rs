@@ -12,9 +12,20 @@ use syn::{Data, DeriveInput, Fields, ItemFn, parse_macro_input};
 ///     field2: i64,
 /// }
 /// ```
+///
+/// For heap-allocated types (marker structs in C#):
+/// ```rust
+/// #[ffi_type(heap)]
+/// struct MyHeapType {
+///     field1: u32,
+/// }
+/// ```
 #[proc_macro_attribute]
-pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
+
+    // Parse the attribute to check for "heap"
+    let is_heap = !attr.is_empty() && attr.to_string().trim() == "heap";
 
     let struct_name = &input.ident;
     let vis = &input.vis;
@@ -56,6 +67,16 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let struct_name_str = struct_name.to_string();
 
+            // Choose TypeKind based on whether this is a heap type
+            let type_kind = if is_heap {
+                quote! { oxidizer_core::TypeKind::HeapAllocated }
+            } else {
+                quote! { oxidizer_core::TypeKind::UserDefined }
+            };
+
+            // Note: For heap types, we don't generate per-type handles.
+            // Users should use HeapAllocated<T> directly from rust_lib::heap_allocated.
+
             quote! {
                 #[repr(C)]
                 #vis struct #struct_name {
@@ -73,7 +94,7 @@ pub fn ffi_type(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             #struct_name_str,
                             std::mem::size_of::<Self>(),
                             fields,
-                            oxidizer_core::TypeKind::UserDefined,
+                            #type_kind,
                         )
                     }
                 }
