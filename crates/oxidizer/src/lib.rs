@@ -1,0 +1,60 @@
+//! Oxidizer - Unified FFI bindings framework for Rust to C# interop.
+//!
+//! This crate re-exports all core oxidizer functionality. Use `oxidizer::prelude::*`
+//! for common imports, or import specific items as needed.
+//!
+//! # Example
+//! ```ignore
+//! use oxidizer::prelude::*;
+//!
+//! #[ffi_type]
+//! pub struct MyStruct {
+//!     pub x: u64,
+//! }
+//!
+//! #[ffi_function]
+//! fn my_function(value: u64) -> MyStruct {
+//!     MyStruct { x: value }
+//! }
+//! ```
+
+// Private module for macro-generated code paths
+// The macros reference ::oxidizer::__private::core::*
+#[doc(hidden)]
+pub mod __private {
+    pub use oxidizer_core as core;
+}
+
+// Re-export macros at crate root for convenience
+pub use oxidizer_macro::{ffi_function, ffi_type};
+
+// Re-export core types
+pub use oxidizer_core::{
+    FieldInfo, FunctionInfo, FunctionParameter, TypeInfo, TypeKind, WireFunction, WireType,
+};
+
+// Re-export registry
+pub use oxidizer_core::registry::Registry;
+
+// Re-export FFI utilities
+pub use oxidizer_utils::{get_utils_registry, HeapAllocated, HeapAllocatedRaw};
+
+// Conditionally re-export csgen (for build-time code generation)
+#[cfg(feature = "csgen")]
+pub mod csgen {
+    //! C# code generation module.
+    //!
+    //! This module is only available with the `csgen` feature enabled.
+    //! It's typically used in build scripts to generate C# bindings.
+    pub use oxidizer_csgen::*;
+}
+
+/// Prelude module for convenient imports.
+///
+/// Use `use oxidizer::prelude::*;` to import commonly used items:
+/// - `ffi_function` - Attribute macro for FFI functions
+/// - `ffi_type` - Attribute macro for FFI types
+/// - `HeapAllocated` - Wrapper for heap-allocated FFI values
+pub mod prelude {
+    pub use crate::{ffi_function, ffi_type, HeapAllocated};
+}

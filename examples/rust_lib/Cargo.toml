@@ -1,0 +1,13 @@
+[package]
+name = "rust_lib"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+ctor = "0.6.1"
+oxidizer = { path = "../../crates/oxidizer" }
+tokio = { version = "1", features = ["full"] }
+lazy_static = "1.4"

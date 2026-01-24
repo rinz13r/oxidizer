@@ -1,15 +1,23 @@
 [workspace]
 members = [
     # Core crates
-    "oxidizer_core",
-    "oxidizer_macro",
+    "crates/oxidizer_core",
+    "crates/oxidizer_macro",
+    "crates/oxidizer_utils",
+    "crates/oxidizer_csgen",
+    "crates/oxidizer",
 
-    # Generator crates
-    "oxidizer_csgen",
+    # Example/test crates
+    "examples/rust_lib",
+    "examples/bindings-generator"
+]
 
-    # Guest crates
-    "rust_lib",
-    "bindings-generator"
+default-members = [
+    "crates/oxidizer_core",
+    "crates/oxidizer_macro",
+    "crates/oxidizer_utils",
+    "crates/oxidizer_csgen",
+    "crates/oxidizer",
 ]
 
 # Optional: specify resolver version (recommended for newer projects)

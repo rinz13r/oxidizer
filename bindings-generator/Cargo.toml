@@ -1,9 +1,0 @@
-[package]
-name = "bindings-generator"
-version = "0.1.0"
-edition = "2024"
-
-[build-dependencies]
-rust_lib = { path = "../rust_lib" }
-oxidizer_core = { path = "../oxidizer_core" }
-oxidizer_csgen = { path = "../oxidizer_csgen" }

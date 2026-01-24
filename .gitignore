@@ -1,3 +1,4 @@
-DotnetApp/bin
-DotnetApp/obj
+examples/DotnetApp/bin
+examples/DotnetApp/obj
+examples/bindings-generator/src/Generated.cs
 target/
