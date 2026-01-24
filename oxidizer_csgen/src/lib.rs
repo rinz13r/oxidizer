@@ -240,12 +240,21 @@ impl CSharpGenerator {
     fn generate_async_function_binding(&self, function: &FunctionInfo) -> String {
         let mut output = String::new();
         let function_name = self.to_pascal_case(function.name());
-        let return_type = self.rust_type_to_csharp_type(function.return_type());
+        let raw_return_type = self.rust_type_to_csharp_type(function.return_type());
         let registrar_class = self.get_registrar_class_name(function.return_type());
+        let returns_heap = self.is_heap_type(function.return_type());
+
+        // Determine the public return type (wrapped for heap types)
+        let public_return_type = if returns_heap {
+            let marker_type = self.get_heap_marker_type(function.return_type());
+            format!("HeapHandle<{marker_type}>")
+        } else {
+            raw_return_type.clone()
+        };
 
         // Generate public async method
         output.push_str(&format!(
-            "    public static async Task<{return_type}> {function_name}("
+            "    public static async Task<{public_return_type}> {function_name}("
         ));
 
         let params: Vec<String> = function
@@ -261,14 +270,14 @@ impl CSharpGenerator {
         output.push_str(&params.join(", "));
         output.push_str(")\n    {\n");
 
-        // Implementation
+        // Implementation - TaskCompletionSource always uses raw type
         output.push_str(&format!(
-            "        var tcs = new TaskCompletionSource<{return_type}>();\n\n"
+            "        var tcs = new TaskCompletionSource<{raw_return_type}>();\n\n"
         ));
         output.push_str(&format!(
             "        var id = {registrar_class}.Instance.Register(\n"
         ));
-        output.push_str(&format!("            ({return_type} res) =>\n"));
+        output.push_str(&format!("            ({raw_return_type} res) =>\n"));
         output.push_str("            {\n");
         output.push_str("                tcs.SetResult(res);\n");
         output.push_str("            });\n\n");
@@ -289,7 +298,16 @@ impl CSharpGenerator {
             function_name,
             param_names.join(", ")
         ));
-        output.push_str("        return await tcs.Task;\n");
+
+        // Return statement - wrap in HeapHandle for heap types
+        if returns_heap {
+            let marker_type = self.get_heap_marker_type(function.return_type());
+            output.push_str(&format!(
+                "        return new HeapHandle<{marker_type}>(await tcs.Task);\n"
+            ));
+        } else {
+            output.push_str("        return await tcs.Task;\n");
+        }
         output.push_str("    }\n\n");
 
         // Generate private DllImport method

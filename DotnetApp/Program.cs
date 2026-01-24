@@ -1,7 +1,7 @@
 ﻿// Example usage of heap-allocated types with type-safe HeapHandle<T>
 
 // Create a heap-allocated FFIHeapTy instance
-using var heapObj = Bindings.HeapAllocCheck();
+using var heapObj = await Bindings.HeapAllocCheckAsync();
 
 Console.WriteLine("Created heap-allocated FFIHeapTy instance");
 Console.WriteLine($"HeapHandle type: {heapObj.GetType().Name}");

@@ -15,7 +15,7 @@ async fn check_async_1(_param: i32) -> f64 {
     42.0
 }
 
-#[ffi_function]
+#[ffi_function(RT)]
 async fn check_async_2(_param: i32) -> u64 {
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     42
@@ -23,6 +23,12 @@ async fn check_async_2(_param: i32) -> u64 {
 
 #[ffi_function]
 fn heap_alloc_check() -> heap_allocated::HeapAllocated<FFIHeapTy> {
+    heap_allocated::HeapAllocated::new(FFIHeapTy { x: 10, y: 20 })
+}
+
+#[ffi_function(RT)]
+async fn heap_alloc_check_async() -> heap_allocated::HeapAllocated<FFIHeapTy> {
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     heap_allocated::HeapAllocated::new(FFIHeapTy { x: 10, y: 20 })
 }
 
@@ -47,7 +53,8 @@ pub fn get_ffi_types_registry() -> oxidizer_core::registry::Registry {
         .register_function::<add>()
         .register_function::<check_async_1>()
         .register_function::<check_async_2>()
-        .register_function::<heap_alloc_check>();
+        .register_function::<heap_alloc_check>()
+        .register_function::<heap_alloc_check_async>();
 
     registry
 }

@@ -85,6 +85,47 @@ class Registrar_double
     }
 }
 
+class Registrar_HeapAllocatedRaw
+{
+    public static readonly Registrar_HeapAllocatedRaw Instance = new();
+
+    public delegate void CallbackDelegate(ulong id, HeapAllocatedRaw result);
+
+    private readonly Dictionary<ulong, Action<HeapAllocatedRaw>> registrations = new();
+    private ulong id = 0;
+    private readonly object lockObj = new();
+
+    private Registrar_HeapAllocatedRaw()
+    {
+    }
+
+    public ulong Register(Action<HeapAllocatedRaw> callback)
+    {
+        ulong currentId;
+
+        lock (lockObj)
+        {
+            currentId = id;
+            registrations[currentId] = callback;
+            id++;
+        }
+
+        return currentId;
+    }
+
+    public static void Callback(ulong id, HeapAllocatedRaw result)
+    {
+        if (Instance.registrations.TryGetValue(id, out var callback))
+        {
+            lock (Instance.lockObj)
+            {
+                Instance.registrations.Remove(id);
+            }
+            callback(result);
+        }
+    }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 public struct HeapAllocatedRaw
 {
@@ -178,5 +219,23 @@ public static class Bindings
     {
         return new HeapHandle<FFIHeapTy>(HeapAllocCheckRaw());
     }
+
+    public static async Task<HeapHandle<FFIHeapTy>> HeapAllocCheckAsync()
+    {
+        var tcs = new TaskCompletionSource<HeapAllocatedRaw>();
+
+        var id = Registrar_HeapAllocatedRaw.Instance.Register(
+            (HeapAllocatedRaw res) =>
+            {
+                tcs.SetResult(res);
+            });
+
+        HeapAllocCheckAsyncInternal(id, Registrar_HeapAllocatedRaw.Callback);
+
+        return new HeapHandle<FFIHeapTy>(await tcs.Task);
+    }
+
+    [DllImport("rust_lib.dll", EntryPoint = "heap_alloc_check_async", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void HeapAllocCheckAsyncInternal(ulong id, Registrar_HeapAllocatedRaw.CallbackDelegate cb);
 
 }
