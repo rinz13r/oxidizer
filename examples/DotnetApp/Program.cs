@@ -2,6 +2,7 @@
 
 // Create a heap-allocated FFIHeapTy instance
 using var heapObj = await Bindings.HeapAllocCheckAsync();
+Bindings.HeapAllocCheck2(heapObj);
 
 Console.WriteLine("Created heap-allocated FFIHeapTy instance");
 Console.WriteLine($"HeapHandle type: {heapObj.GetType().Name}");

@@ -64,13 +64,6 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let struct_name_str = struct_name.to_string();
 
-            // Choose TypeKind based on whether this is a heap type
-            let type_kind = if is_heap {
-                quote! { ::oxidizer::__private::core::TypeKind::HeapAllocated }
-            } else {
-                quote! { ::oxidizer::__private::core::TypeKind::UserDefined }
-            };
-
             // Note: For heap types, we don't generate per-type handles.
             // Users should use HeapAllocated<T> directly from rust_lib::heap_allocated.
 
@@ -89,7 +82,8 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
                         ::oxidizer::__private::core::TypeInfo::new(
                             #struct_name_str,
                             fields,
-                            #type_kind,
+                            ::oxidizer::__private::core::TypeKind::UserDefined,
+                            #is_heap,
                         )
                     }
                 }
@@ -201,6 +195,7 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                     "()",
                     Vec::new(),
                     ::oxidizer::__private::core::TypeKind::Void,
+                    false,
                 )
             },
         ),

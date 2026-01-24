@@ -38,21 +38,18 @@ impl CSharpGenerator {
 
         // Generate struct definitions
         for type_info in registry.types() {
-            match type_info.kind() {
-                TypeKind::HeapAllocated => {
-                    // For heap types, generate a marker struct (empty)
-                    output.push_str(&self.generate_marker_struct(type_info));
+            if type_info.is_heap_allocated() {
+                // For heap types, generate a marker struct (empty)
+                output.push_str(&self.generate_marker_struct(type_info));
+                output.push('\n');
+            } else if matches!(type_info.kind(), TypeKind::UserDefined) {
+                // For value types with fields, generate full struct
+                if !type_info.fields().is_empty() {
+                    output.push_str(&self.generate_struct(type_info));
                     output.push('\n');
                 }
-                TypeKind::UserDefined => {
-                    // For value types with fields, generate full struct
-                    if !type_info.fields().is_empty() {
-                        output.push_str(&self.generate_struct(type_info));
-                        output.push('\n');
-                    }
-                }
-                _ => {} // Primitives don't need struct generation
             }
+            // Primitives don't need struct generation
         }
 
         // Generate bindings class
@@ -336,8 +333,13 @@ impl CSharpGenerator {
         let mut output = String::new();
         let function_name = self.to_pascal_case(function.name());
         let returns_heap = self.is_heap_type(function.return_type());
+        let has_heap_params = function
+            .parameters()
+            .iter()
+            .any(|p| self.is_heap_type(p.ty()));
 
-        let params: Vec<String> = function
+        // Generate raw params (for DllImport - uses HeapAllocatedRaw)
+        let raw_params: Vec<String> = function
             .parameters()
             .iter()
             .map(|param| {
@@ -347,40 +349,88 @@ impl CSharpGenerator {
             })
             .collect();
 
-        if returns_heap {
-            // For heap-returning functions: private raw DllImport + public typed wrapper
-            let marker_type = self.get_heap_marker_type(function.return_type());
+        // Generate public params (for wrapper - uses HeapHandle<T>)
+        let public_params: Vec<String> = function
+            .parameters()
+            .iter()
+            .map(|param| {
+                let param_name = param.name().to_lowercase();
+                if self.is_heap_type(param.ty()) {
+                    let marker_type = self.get_heap_marker_type(param.ty());
+                    format!("HeapHandle<{marker_type}> {param_name}")
+                } else {
+                    let param_type = self.rust_type_to_csharp_type(param.ty());
+                    format!("{param_type} {param_name}")
+                }
+            })
+            .collect();
 
+        // Generate call arguments (extracts .Raw from HeapHandle params)
+        let call_args: Vec<String> = function
+            .parameters()
+            .iter()
+            .map(|param| {
+                let param_name = param.name().to_lowercase();
+                if self.is_heap_type(param.ty()) {
+                    format!("{param_name}.Raw")
+                } else {
+                    param_name
+                }
+            })
+            .collect();
+
+        let needs_wrapper = returns_heap || has_heap_params;
+
+        if needs_wrapper {
             // Private raw DllImport
             output.push_str(&format!(
                 "    [DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]\n",
                 self.library_name, function.name()
             ));
+
+            let raw_return_type = self.rust_type_to_csharp_type(function.return_type());
             output.push_str(&format!(
-                "    private static extern HeapAllocatedRaw {function_name}Raw({});\n\n",
-                params.join(", ")
+                "    private static extern {raw_return_type} {function_name}Internal({});\n\n",
+                raw_params.join(", ")
             ));
 
             // Public typed wrapper
+            let public_return_type = if returns_heap {
+                let marker_type = self.get_heap_marker_type(function.return_type());
+                format!("HeapHandle<{marker_type}>")
+            } else {
+                self.rust_type_to_csharp_type(function.return_type())
+            };
+
             output.push_str(&format!(
-                "    public static HeapHandle<{marker_type}> {function_name}({})\n",
-                params.join(", ")
+                "    public static {public_return_type} {function_name}({})\n",
+                public_params.join(", ")
             ));
             output.push_str("    {\n");
 
-            let param_names: Vec<String> = function
-                .parameters()
-                .iter()
-                .map(|p| p.name().to_lowercase())
-                .collect();
-
-            output.push_str(&format!(
-                "        return new HeapHandle<{marker_type}>({function_name}Raw({}));\n",
-                param_names.join(", ")
-            ));
+            if returns_heap {
+                let marker_type = self.get_heap_marker_type(function.return_type());
+                output.push_str(&format!(
+                    "        return new HeapHandle<{marker_type}>({function_name}Internal({}));\n",
+                    call_args.join(", ")
+                ));
+            } else {
+                let return_type = self.rust_type_to_csharp_type(function.return_type());
+                if return_type == "void" {
+                    output.push_str(&format!(
+                        "        {function_name}Internal({});\n",
+                        call_args.join(", ")
+                    ));
+                } else {
+                    output.push_str(&format!(
+                        "        return {function_name}Internal({});\n",
+                        call_args.join(", ")
+                    ));
+                }
+            }
             output.push_str("    }\n");
         } else {
-            // Standard sync function binding
+            // Standard sync function binding (no heap types)
             let return_type = self.rust_type_to_csharp_type(function.return_type());
 
             output.push_str(&format!(
@@ -390,7 +440,7 @@ impl CSharpGenerator {
 
             output.push_str(&format!(
                 "    public static extern {return_type} {function_name}({});\n",
-                params.join(", ")
+                raw_params.join(", ")
             ));
         }
 
@@ -403,6 +453,11 @@ impl CSharpGenerator {
     }
 
     fn rust_type_to_csharp_type(&self, rust_type: &TypeInfo) -> String {
+        // For heap-allocated types, use HeapAllocatedRaw at FFI boundary
+        if rust_type.is_heap_allocated() {
+            return "HeapAllocatedRaw".to_string();
+        }
+
         match rust_type.kind() {
             TypeKind::U8 => "byte",
             TypeKind::U16 => "ushort",
@@ -418,15 +473,13 @@ impl CSharpGenerator {
             TypeKind::Void => "void",
             TypeKind::Pointer => "IntPtr",
             TypeKind::UserDefined => rust_type.name(),
-            // For heap-allocated types, use HeapAllocatedRaw at FFI boundary
-            TypeKind::HeapAllocated => "HeapAllocatedRaw",
         }
         .to_string()
     }
 
     /// Check if a type is heap-allocated
     fn is_heap_type(&self, type_info: &TypeInfo) -> bool {
-        matches!(type_info.kind(), TypeKind::HeapAllocated)
+        type_info.is_heap_allocated()
     }
 
     /// Get the marker type name for a heap handle
@@ -461,19 +514,19 @@ mod tests {
     #[test]
     fn test_generate_registrar_class() {
         let generator = CSharpGenerator::default();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64);
+        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, false);
         let registrar = generator.generate_registrar_class(&return_type);
 
         assert!(registrar.contains("class Registrar_ulong"));
         assert!(registrar.contains("Action<ulong>"));
-        assert!(registrar.contains("CallbackDelegate(long id, ulong result)"));
+        assert!(registrar.contains("CallbackDelegate(ulong id, ulong result)"));
     }
 
     #[test]
     fn test_sync_function_binding() {
         let generator = CSharpGenerator::default();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64);
-        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32);
+        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, false);
+        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, false);
         let param = FunctionParameter::new("value", param_type);
         let function = FunctionInfo::new("test_func", vec![param], return_type, false);
 
@@ -486,8 +539,8 @@ mod tests {
     #[test]
     fn test_async_function_binding() {
         let generator = CSharpGenerator::default();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64);
-        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32);
+        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, false);
+        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, false);
         let param = FunctionParameter::new("value", param_type);
         let function = FunctionInfo::new("test_async_func", vec![param], return_type, true);
 

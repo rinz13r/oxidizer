@@ -59,11 +59,17 @@ pub struct TypeInfo {
     name: &'static str,
     fields: Vec<FieldInfo>,
     kind: TypeKind,
+    #[getter(skip)]
+    is_heap_allocated: bool,
 }
 
 impl TypeInfo {
     pub fn name(&self) -> &'static str {
         self.name
+    }
+
+    pub fn is_heap_allocated(&self) -> bool {
+        self.is_heap_allocated
     }
 }
 
@@ -88,7 +94,4 @@ pub enum TypeKind {
 
     // User-defined type (value type, copied across FFI)
     UserDefined,
-
-    // Heap-allocated type (pointer passed across FFI, C# owns lifetime)
-    HeapAllocated,
 }

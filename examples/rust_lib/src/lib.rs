@@ -22,8 +22,12 @@ async fn check_async_2(_param: i32) -> u64 {
 }
 
 #[ffi_function]
-fn heap_alloc_check() -> HeapAllocated<FFIHeapTy> {
+fn heap_alloc_check_1() -> HeapAllocated<FFIHeapTy> {
     HeapAllocated::new(FFIHeapTy { x: 10, y: 20 })
+}
+
+#[ffi_function]
+fn heap_alloc_check_2(_param: HeapAllocated<FFIHeapTy>) {
 }
 
 #[ffi_function(RT)]
@@ -53,7 +57,8 @@ pub fn get_ffi_types_registry() -> Registry {
         .register_function::<add>()
         .register_function::<check_async_1>()
         .register_function::<check_async_2>()
-        .register_function::<heap_alloc_check>()
+        .register_function::<heap_alloc_check_1>()
+        .register_function::<heap_alloc_check_2>()
         .register_function::<heap_alloc_check_async>();
 
     registry

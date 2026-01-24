@@ -20,7 +20,7 @@ impl WireType for HeapAllocatedRaw {
             FieldInfo::new("ptr", <*mut c_void as WireType>::get_type_info()),
             FieldInfo::new("drop_fn", <*const c_void as WireType>::get_type_info()),
         ];
-        TypeInfo::new("HeapAllocatedRaw", fields, TypeKind::UserDefined)
+        TypeInfo::new("HeapAllocatedRaw", fields, TypeKind::UserDefined, false)
     }
 }
 
@@ -30,7 +30,13 @@ pub struct drop_heap_allocated;
 impl drop_heap_allocated {
     #[unsafe(export_name = "drop_heap_allocated")]
     pub extern "C" fn call(ha: HeapAllocatedRaw) {
-        drop(ha);
+        unsafe {
+            if !ha.ptr.is_null() {
+                let dropper: unsafe extern "C" fn(*mut c_void) = std::mem::transmute(ha.drop_fn);
+                dropper(ha.ptr);
+                // ha.ptr = std::ptr::null_mut();
+            }
+        }
     }
 }
 
@@ -42,7 +48,7 @@ impl WireFunction for drop_heap_allocated {
                 "ha",
                 HeapAllocatedRaw::get_type_info(),
             )],
-            TypeInfo::new("()", Vec::new(), TypeKind::Void),
+            TypeInfo::new("()", Vec::new(), TypeKind::Void, false),
             false,
         )
     }
@@ -71,18 +77,6 @@ impl HeapAllocatedRaw {
     #[allow(dead_code)]
     pub unsafe fn as_mut<T>(&mut self) -> &mut T {
         unsafe { &mut *(self.ptr as *mut T) }
-    }
-}
-
-impl Drop for HeapAllocatedRaw {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.ptr.is_null() {
-                let dropper: unsafe extern "C" fn(*mut c_void) = std::mem::transmute(self.drop_fn);
-                dropper(self.ptr);
-                self.ptr = std::ptr::null_mut();
-            }
-        }
     }
 }
 
@@ -151,7 +145,8 @@ where
         TypeInfo::new(
             type_name,
             raw_info.fields().clone(),
-            oxidizer_core::TypeKind::HeapAllocated,
+            oxidizer_core::TypeKind::UserDefined,
+            true, // is_heap_allocated
         )
     }
 }

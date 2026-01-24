@@ -3,47 +3,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
-class Registrar_ulong
-{
-    public static readonly Registrar_ulong Instance = new();
-
-    public delegate void CallbackDelegate(ulong id, ulong result);
-
-    private readonly Dictionary<ulong, Action<ulong>> registrations = new();
-    private ulong id = 0;
-    private readonly object lockObj = new();
-
-    private Registrar_ulong()
-    {
-    }
-
-    public ulong Register(Action<ulong> callback)
-    {
-        ulong currentId;
-
-        lock (lockObj)
-        {
-            currentId = id;
-            registrations[currentId] = callback;
-            id++;
-        }
-
-        return currentId;
-    }
-
-    public static void Callback(ulong id, ulong result)
-    {
-        if (Instance.registrations.TryGetValue(id, out var callback))
-        {
-            lock (Instance.lockObj)
-            {
-                Instance.registrations.Remove(id);
-            }
-            callback(result);
-        }
-    }
-}
-
 class Registrar_double
 {
     public static readonly Registrar_double Instance = new();
@@ -73,6 +32,47 @@ class Registrar_double
     }
 
     public static void Callback(ulong id, double result)
+    {
+        if (Instance.registrations.TryGetValue(id, out var callback))
+        {
+            lock (Instance.lockObj)
+            {
+                Instance.registrations.Remove(id);
+            }
+            callback(result);
+        }
+    }
+}
+
+class Registrar_ulong
+{
+    public static readonly Registrar_ulong Instance = new();
+
+    public delegate void CallbackDelegate(ulong id, ulong result);
+
+    private readonly Dictionary<ulong, Action<ulong>> registrations = new();
+    private ulong id = 0;
+    private readonly object lockObj = new();
+
+    private Registrar_ulong()
+    {
+    }
+
+    public ulong Register(Action<ulong> callback)
+    {
+        ulong currentId;
+
+        lock (lockObj)
+        {
+            currentId = id;
+            registrations[currentId] = callback;
+            id++;
+        }
+
+        return currentId;
+    }
+
+    public static void Callback(ulong id, ulong result)
     {
         if (Instance.registrations.TryGetValue(id, out var callback))
         {
@@ -212,12 +212,20 @@ public static class Bindings
     [DllImport("rust_lib.dll", EntryPoint = "check_async_2", CallingConvention = CallingConvention.Cdecl)]
     private static extern void CheckAsync2Internal(ulong id, int _param, Registrar_ulong.CallbackDelegate cb);
 
-    [DllImport("rust_lib.dll", EntryPoint = "heap_alloc_check", CallingConvention = CallingConvention.Cdecl)]
-    private static extern HeapAllocatedRaw HeapAllocCheckRaw();
+    [DllImport("rust_lib.dll", EntryPoint = "heap_alloc_check_1", CallingConvention = CallingConvention.Cdecl)]
+    private static extern HeapAllocatedRaw HeapAllocCheck1Internal();
 
-    public static HeapHandle<FFIHeapTy> HeapAllocCheck()
+    public static HeapHandle<FFIHeapTy> HeapAllocCheck1()
     {
-        return new HeapHandle<FFIHeapTy>(HeapAllocCheckRaw());
+        return new HeapHandle<FFIHeapTy>(HeapAllocCheck1Internal());
+    }
+
+    [DllImport("rust_lib.dll", EntryPoint = "heap_alloc_check_2", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void HeapAllocCheck2Internal(HeapAllocatedRaw _param);
+
+    public static void HeapAllocCheck2(HeapHandle<FFIHeapTy> _param)
+    {
+        HeapAllocCheck2Internal(_param.Raw);
     }
 
     public static async Task<HeapHandle<FFIHeapTy>> HeapAllocCheckAsync()
