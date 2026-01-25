@@ -4,6 +4,27 @@ mod init;
 
 use init::RT;
 
+// Example slice functions
+
+/// Returns an owned slice of numbers to C#.
+/// The C# side receives an OwnedArray<ulong> which must be disposed.
+#[ffi_function]
+fn get_numbers() -> OwnedSlice<u64> {
+    OwnedSlice::from_vec(vec![1, 2, 3, 4, 5])
+}
+
+/// Sums numbers from a borrowed slice.
+#[ffi_function]
+fn sum_numbers(data: FFISlice<u64>) -> u64 {
+    unsafe { data.as_slice().iter().sum() }
+}
+
+/// Returns a larger array of numbers (for testing).
+#[ffi_function]
+fn get_large_array(count: u64) -> OwnedSlice<u64> {
+    OwnedSlice::from_vec((0..count).collect())
+}
+
 #[ffi_function]
 fn add(x: u64, y: u64) -> FFITy {
     FFITy { x, y }
@@ -59,7 +80,11 @@ pub fn get_ffi_types_registry() -> Registry {
         .register_function::<check_async_2>()
         .register_function::<heap_alloc_check_1>()
         .register_function::<heap_alloc_check_2>()
-        .register_function::<heap_alloc_check_async>();
+        .register_function::<heap_alloc_check_async>()
+        // Slice functions
+        .register_function::<get_numbers>()
+        .register_function::<sum_numbers>()
+        .register_function::<get_large_array>();
 
     registry
 }

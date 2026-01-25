@@ -36,6 +36,10 @@ impl CSharpGenerator {
         output.push_str(&self.generate_heap_infrastructure());
         output.push('\n');
 
+        // Generate slice infrastructure (FFISliceRaw, OwnedSliceRaw, OwnedArray<T>, etc.)
+        output.push_str(&self.generate_slice_infrastructure());
+        output.push('\n');
+
         // Generate struct definitions
         for type_info in registry.types() {
             if type_info.is_heap_allocated() {
@@ -186,6 +190,115 @@ impl CSharpGenerator {
         output
     }
 
+    /// Generate slice infrastructure types
+    fn generate_slice_infrastructure(&self) -> String {
+        let mut output = String::new();
+
+        // FFISliceRaw - type-erased borrowed slice
+        output.push_str("/// <summary>Type-erased borrowed slice for FFI boundary.</summary>\n");
+        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
+        output.push_str("public struct FFISliceRaw\n");
+        output.push_str("{\n");
+        output.push_str("    public IntPtr Ptr;\n");
+        output.push_str("    public nuint Len;\n");
+        output.push_str("}\n\n");
+
+        // OwnedSliceRaw - type-erased owned slice
+        output.push_str("/// <summary>Type-erased owned slice for FFI boundary.</summary>\n");
+        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
+        output.push_str("public struct OwnedSliceRaw\n");
+        output.push_str("{\n");
+        output.push_str("    public IntPtr Ptr;\n");
+        output.push_str("    public nuint Len;\n");
+        output.push_str("    public nuint Capacity;\n");
+        output.push_str("    public nuint ElementSize;\n");
+        output.push_str("    public IntPtr DropFn;\n");
+        output.push_str("}\n\n");
+
+        // ReadOnlySliceHandle<T> - wrapper for borrowed slices
+        output.push_str("/// <summary>\n");
+        output.push_str("/// Read-only view into a borrowed Rust slice.\n");
+        output.push_str("/// The underlying data is owned by Rust and must not be modified.\n");
+        output.push_str("/// </summary>\n");
+        output.push_str("public readonly ref struct ReadOnlySliceHandle<T> where T : unmanaged\n");
+        output.push_str("{\n");
+        output.push_str("    private readonly FFISliceRaw _raw;\n\n");
+        output.push_str("    internal ReadOnlySliceHandle(FFISliceRaw raw) => _raw = raw;\n\n");
+        output.push_str("    public int Length => (int)_raw.Len;\n\n");
+        output.push_str("    public unsafe ReadOnlySpan<T> AsSpan()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
+        output.push_str("            return ReadOnlySpan<T>.Empty;\n");
+        output.push_str("        return new ReadOnlySpan<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
+        output.push_str("    }\n");
+        output.push_str("}\n\n");
+
+        // SliceHandle<T> - wrapper for mutable borrowed slices
+        output.push_str("/// <summary>\n");
+        output.push_str("/// Mutable view into a borrowed Rust slice.\n");
+        output.push_str("/// </summary>\n");
+        output.push_str("public readonly ref struct SliceHandle<T> where T : unmanaged\n");
+        output.push_str("{\n");
+        output.push_str("    private readonly FFISliceRaw _raw;\n\n");
+        output.push_str("    internal SliceHandle(FFISliceRaw raw) => _raw = raw;\n\n");
+        output.push_str("    public int Length => (int)_raw.Len;\n\n");
+        output.push_str("    public unsafe Span<T> AsSpan()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
+        output.push_str("            return Span<T>.Empty;\n");
+        output.push_str("        return new Span<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
+        output.push_str("    }\n");
+        output.push_str("}\n\n");
+
+        // OwnedArray<T> - IDisposable wrapper for owned slices
+        output.push_str("/// <summary>\n");
+        output.push_str("/// Owned array transferred from Rust.\n");
+        output.push_str("/// Implements IDisposable to ensure proper cleanup of native resources.\n");
+        output.push_str("/// </summary>\n");
+        output.push_str("public sealed class OwnedArray<T> : IDisposable where T : unmanaged\n");
+        output.push_str("{\n");
+        output.push_str("    private OwnedSliceRaw _raw;\n");
+        output.push_str("    private bool _disposed;\n\n");
+
+        output.push_str("    internal OwnedArray(OwnedSliceRaw raw) => _raw = raw;\n");
+        output.push_str("    internal OwnedSliceRaw Raw => _raw;\n\n");
+
+        output.push_str("    public int Length => (int)_raw.Len;\n\n");
+
+        output.push_str("    public unsafe ReadOnlySpan<T> AsSpan()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_disposed) throw new ObjectDisposedException(nameof(OwnedArray<T>));\n");
+        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
+        output.push_str("            return ReadOnlySpan<T>.Empty;\n");
+        output.push_str("        return new ReadOnlySpan<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
+        output.push_str("    }\n\n");
+
+        output.push_str("    public T this[int index]\n");
+        output.push_str("    {\n");
+        output.push_str("        get\n");
+        output.push_str("        {\n");
+        output.push_str("            if (_disposed) throw new ObjectDisposedException(nameof(OwnedArray<T>));\n");
+        output.push_str("            if (index < 0 || index >= (int)_raw.Len)\n");
+        output.push_str("                throw new IndexOutOfRangeException();\n");
+        output.push_str("            unsafe { return ((T*)_raw.Ptr)[index]; }\n");
+        output.push_str("        }\n");
+        output.push_str("    }\n\n");
+
+        output.push_str("    public void Dispose()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_disposed) return;\n");
+        output.push_str("        _disposed = true;\n\n");
+        output.push_str("        if (_raw.Ptr != IntPtr.Zero)\n");
+        output.push_str("        {\n");
+        output.push_str("            Bindings.DropOwnedSlice(_raw);\n");
+        output.push_str("            _raw.Ptr = IntPtr.Zero;\n");
+        output.push_str("        }\n");
+        output.push_str("    }\n");
+        output.push_str("}\n");
+
+        output
+    }
+
     /// Generate an empty marker struct for heap-only types
     fn generate_marker_struct(&self, type_info: &TypeInfo) -> String {
         let mut output = String::new();
@@ -239,10 +352,14 @@ impl CSharpGenerator {
         let function_name = self.to_pascal_case(function.name());
         let raw_return_type = self.rust_type_to_csharp_type(function.return_type());
         let registrar_class = self.get_registrar_class_name(function.return_type());
-        let returns_heap = self.is_heap_type(function.return_type());
+        let returns_heap = self.is_heap_type(function.return_type()) && !self.is_owned_slice_type(function.return_type());
+        let returns_owned_slice = self.is_owned_slice_type(function.return_type());
 
-        // Determine the public return type (wrapped for heap types)
-        let public_return_type = if returns_heap {
+        // Determine the public return type (wrapped for heap types or owned slices)
+        let public_return_type = if returns_owned_slice {
+            let element_type = self.get_owned_slice_element_type(function.return_type());
+            format!("OwnedArray<{element_type}>")
+        } else if returns_heap {
             let marker_type = self.get_heap_marker_type(function.return_type());
             format!("HeapHandle<{marker_type}>")
         } else {
@@ -296,8 +413,13 @@ impl CSharpGenerator {
             param_names.join(", ")
         ));
 
-        // Return statement - wrap in HeapHandle for heap types
-        if returns_heap {
+        // Return statement - wrap in OwnedArray for owned slices, HeapHandle for heap types
+        if returns_owned_slice {
+            let element_type = self.get_owned_slice_element_type(function.return_type());
+            output.push_str(&format!(
+                "        return new OwnedArray<{element_type}>(await tcs.Task);\n"
+            ));
+        } else if returns_heap {
             let marker_type = self.get_heap_marker_type(function.return_type());
             output.push_str(&format!(
                 "        return new HeapHandle<{marker_type}>(await tcs.Task);\n"
@@ -332,7 +454,8 @@ impl CSharpGenerator {
     fn generate_sync_function_binding(&self, function: &FunctionInfo) -> String {
         let mut output = String::new();
         let function_name = self.to_pascal_case(function.name());
-        let returns_heap = self.is_heap_type(function.return_type());
+        let returns_heap = self.is_heap_type(function.return_type()) && !self.is_owned_slice_type(function.return_type());
+        let returns_owned_slice = self.is_owned_slice_type(function.return_type());
         let has_heap_params = function
             .parameters()
             .iter()
@@ -355,7 +478,7 @@ impl CSharpGenerator {
             .iter()
             .map(|param| {
                 let param_name = param.name().to_lowercase();
-                if self.is_heap_type(param.ty()) {
+                if self.is_heap_type(param.ty()) && !self.is_owned_slice_type(param.ty()) {
                     let marker_type = self.get_heap_marker_type(param.ty());
                     format!("HeapHandle<{marker_type}> {param_name}")
                 } else {
@@ -371,7 +494,7 @@ impl CSharpGenerator {
             .iter()
             .map(|param| {
                 let param_name = param.name().to_lowercase();
-                if self.is_heap_type(param.ty()) {
+                if self.is_heap_type(param.ty()) && !self.is_owned_slice_type(param.ty()) {
                     format!("{param_name}.Raw")
                 } else {
                     param_name
@@ -379,7 +502,7 @@ impl CSharpGenerator {
             })
             .collect();
 
-        let needs_wrapper = returns_heap || has_heap_params;
+        let needs_wrapper = returns_heap || returns_owned_slice || has_heap_params;
 
         if needs_wrapper {
             // Private raw DllImport
@@ -395,7 +518,10 @@ impl CSharpGenerator {
             ));
 
             // Public typed wrapper
-            let public_return_type = if returns_heap {
+            let public_return_type = if returns_owned_slice {
+                let element_type = self.get_owned_slice_element_type(function.return_type());
+                format!("OwnedArray<{element_type}>")
+            } else if returns_heap {
                 let marker_type = self.get_heap_marker_type(function.return_type());
                 format!("HeapHandle<{marker_type}>")
             } else {
@@ -408,7 +534,13 @@ impl CSharpGenerator {
             ));
             output.push_str("    {\n");
 
-            if returns_heap {
+            if returns_owned_slice {
+                let element_type = self.get_owned_slice_element_type(function.return_type());
+                output.push_str(&format!(
+                    "        return new OwnedArray<{element_type}>({function_name}Internal({}));\n",
+                    call_args.join(", ")
+                ));
+            } else if returns_heap {
                 let marker_type = self.get_heap_marker_type(function.return_type());
                 output.push_str(&format!(
                     "        return new HeapHandle<{marker_type}>({function_name}Internal({}));\n",
@@ -453,6 +585,16 @@ impl CSharpGenerator {
     }
 
     fn rust_type_to_csharp_type(&self, rust_type: &TypeInfo) -> String {
+        // For OwnedSlice types, use OwnedSliceRaw at FFI boundary
+        if let TypeKind::OwnedSlice { .. } = rust_type.kind() {
+            return "OwnedSliceRaw".to_string();
+        }
+
+        // For Slice types, use FFISliceRaw at FFI boundary
+        if let TypeKind::Slice { .. } = rust_type.kind() {
+            return "FFISliceRaw".to_string();
+        }
+
         // For heap-allocated types, use HeapAllocatedRaw at FFI boundary
         if rust_type.is_heap_allocated() {
             return "HeapAllocatedRaw".to_string();
@@ -473,6 +615,8 @@ impl CSharpGenerator {
             TypeKind::Void => "void",
             TypeKind::Pointer => "IntPtr",
             TypeKind::UserDefined => rust_type.name(),
+            TypeKind::Slice { .. } => "FFISliceRaw",
+            TypeKind::OwnedSlice { .. } => "OwnedSliceRaw",
         }
         .to_string()
     }
@@ -480,6 +624,73 @@ impl CSharpGenerator {
     /// Check if a type is heap-allocated
     fn is_heap_type(&self, type_info: &TypeInfo) -> bool {
         type_info.is_heap_allocated()
+    }
+
+    /// Check if a type is an owned slice
+    fn is_owned_slice_type(&self, type_info: &TypeInfo) -> bool {
+        matches!(type_info.kind(), TypeKind::OwnedSlice { .. })
+    }
+
+    /// Get the element type name for an owned slice
+    fn get_owned_slice_element_type(&self, type_info: &TypeInfo) -> String {
+        if let TypeKind::OwnedSlice { element_kind } = type_info.kind() {
+            self.type_kind_to_csharp_type(element_kind)
+        } else {
+            // Fallback: try to extract from type name
+            self.extract_generic_inner_type(type_info.name(), "OwnedSlice")
+        }
+    }
+
+    /// Convert a TypeKind to C# type name
+    fn type_kind_to_csharp_type(&self, kind: &TypeKind) -> String {
+        match kind {
+            TypeKind::U8 => "byte".to_string(),
+            TypeKind::U16 => "ushort".to_string(),
+            TypeKind::U32 => "uint".to_string(),
+            TypeKind::U64 => "ulong".to_string(),
+            TypeKind::I8 => "sbyte".to_string(),
+            TypeKind::I16 => "short".to_string(),
+            TypeKind::I32 => "int".to_string(),
+            TypeKind::I64 => "long".to_string(),
+            TypeKind::F32 => "float".to_string(),
+            TypeKind::F64 => "double".to_string(),
+            TypeKind::Bool => "bool".to_string(),
+            TypeKind::Void => "void".to_string(),
+            TypeKind::Pointer => "IntPtr".to_string(),
+            TypeKind::UserDefined => "object".to_string(), // Fallback
+            TypeKind::Slice { element_kind } => {
+                format!("ReadOnlySliceHandle<{}>", self.type_kind_to_csharp_type(element_kind))
+            }
+            TypeKind::OwnedSlice { element_kind } => {
+                format!("OwnedArray<{}>", self.type_kind_to_csharp_type(element_kind))
+            }
+        }
+    }
+
+    /// Extract inner type from generic format "Wrapper<T>" -> "T"
+    fn extract_generic_inner_type(&self, type_name: &str, wrapper_name: &str) -> String {
+        let prefix = format!("{}<", wrapper_name);
+        if type_name.starts_with(&prefix) && type_name.ends_with('>') {
+            let inner = &type_name[prefix.len()..type_name.len() - 1];
+            // Convert Rust type name to C# type
+            match inner {
+                "u8" => "byte",
+                "u16" => "ushort",
+                "u32" => "uint",
+                "u64" => "ulong",
+                "i8" => "sbyte",
+                "i16" => "short",
+                "i32" => "int",
+                "i64" => "long",
+                "f32" => "float",
+                "f64" => "double",
+                "bool" => "bool",
+                other => other,
+            }
+            .to_string()
+        } else {
+            type_name.to_string()
+        }
     }
 
     /// Get the marker type name for a heap handle

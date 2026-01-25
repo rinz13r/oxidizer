@@ -94,4 +94,8 @@ pub enum TypeKind {
 
     // User-defined type (value type, copied across FFI)
     UserDefined,
+
+    // Slice types for Vec/slice transfer
+    Slice { element_kind: Box<TypeKind> },
+    OwnedSlice { element_kind: Box<TypeKind> },
 }

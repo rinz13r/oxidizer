@@ -20,6 +20,7 @@ impl_wire_type_primitive! {
     u16 => ("u16", TypeKind::U16),
     u32 => ("u32", TypeKind::U32),
     u64 => ("u64", TypeKind::U64),
+    usize => ("usize", TypeKind::U64), // usize maps to U64 for FFI (platform-dependent)
     i8 => ("i8", TypeKind::I8),
     i16 => ("i16", TypeKind::I16),
     i32 => ("i32", TypeKind::I32),
