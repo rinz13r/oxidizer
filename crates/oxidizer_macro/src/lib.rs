@@ -13,10 +13,10 @@ use syn::{Data, DeriveInput, Fields, ItemFn, parse_macro_input};
 /// }
 /// ```
 ///
-/// For heap-allocated types (marker structs in C#):
+/// For marker types (generates empty C# struct, wrapped with `Owned<T>` in Rust):
 /// ```rust
-/// #[ffi_type(heap)]
-/// struct MyHeapType {
+/// #[ffi_type(marker)]
+/// struct MyMarkerType {
 ///     field1: u32,
 /// }
 /// ```
@@ -24,8 +24,9 @@ use syn::{Data, DeriveInput, Fields, ItemFn, parse_macro_input};
 pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
 
-    // Parse the attribute to check for "heap"
-    let is_heap = !attr.is_empty() && attr.to_string().trim() == "heap";
+    // Parse the attribute to check for "marker"
+    let attr_str = attr.to_string();
+    let is_marker = !attr.is_empty() && attr_str.trim() == "marker";
 
     let struct_name = &input.ident;
     let vis = &input.vis;
@@ -64,8 +65,15 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let struct_name_str = struct_name.to_string();
 
-            // Note: For heap types, we don't generate per-type handles.
-            // Users should use HeapAllocated<T> directly from rust_lib::heap_allocated.
+            // Note: For marker types, we don't generate per-type handles.
+            // Users should use Owned<T> directly.
+
+            // Generate metadata based on whether this is a marker type
+            let metadata = if is_marker {
+                quote! { &[("ffi_repr", "owned")] }
+            } else {
+                quote! { &[] }
+            };
 
             quote! {
                 #[repr(C)]
@@ -82,8 +90,9 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
                         ::oxidizer::__private::core::TypeInfo::new(
                             #struct_name_str,
                             fields,
-                            ::oxidizer::__private::core::TypeKind::UserDefined,
-                            #is_heap,
+                            ::oxidizer::__private::core::TypeKind::Struct,
+                            vec![],
+                            #metadata,
                         )
                     }
                 }
@@ -195,7 +204,8 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                     "()",
                     Vec::new(),
                     ::oxidizer::__private::core::TypeKind::Void,
-                    false,
+                    vec![],
+                    &[],
                 )
             },
         ),
@@ -266,7 +276,7 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                         // ::oxidizer::__private::core::FunctionParameter::new("id", ::oxidizer::__private::core::TypeInfo::new("u64", 8, vec![], ::oxidizer::__private::core::TypeKind::U64)),
                     ];
                     #(parameters.push(::oxidizer::__private::core::FunctionParameter::new(#param_names, <#param_types as ::oxidizer::__private::core::WireType>::get_type_info()));)*
-                    // parameters.push(::oxidizer::__private::core::FunctionParameter::new("cb", ::oxidizer::__private::core::TypeInfo::new("callback", 8, vec![], ::oxidizer::__private::core::TypeKind::UserDefined)));
+                    // parameters.push(::oxidizer::__private::core::FunctionParameter::new("cb", ::oxidizer::__private::core::TypeInfo::new("callback", 8, vec![], ::oxidizer::__private::core::TypeKind::Struct)));
 
                     ::oxidizer::__private::core::FunctionInfo::new(
                         #fn_name_str,

@@ -9,52 +9,48 @@ use oxidizer_core::{
 // a circular dependency (oxidizer depends on oxidizer_utils).
 
 #[repr(C)]
-pub struct HeapAllocatedRaw {
+pub struct OwnedRaw {
     ptr: *mut c_void,
     drop_fn: *const c_void,
 }
 
-impl WireType for HeapAllocatedRaw {
+impl WireType for OwnedRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
             FieldInfo::new("ptr", <*mut c_void as WireType>::get_type_info()),
             FieldInfo::new("drop_fn", <*const c_void as WireType>::get_type_info()),
         ];
-        TypeInfo::new("HeapAllocatedRaw", fields, TypeKind::UserDefined, false)
+        TypeInfo::new("OwnedRawHandle", fields, TypeKind::Struct, vec![], &[])
     }
 }
 
 #[allow(non_camel_case_types)]
-pub struct drop_heap_allocated;
+pub struct drop_owned;
 
-impl drop_heap_allocated {
-    #[unsafe(export_name = "drop_heap_allocated")]
-    pub extern "C" fn call(ha: HeapAllocatedRaw) {
+impl drop_owned {
+    #[unsafe(export_name = "drop_owned")]
+    pub extern "C" fn call(owned: OwnedRaw) {
         unsafe {
-            if !ha.ptr.is_null() {
-                let dropper: unsafe extern "C" fn(*mut c_void) = std::mem::transmute(ha.drop_fn);
-                dropper(ha.ptr);
-                // ha.ptr = std::ptr::null_mut();
+            if !owned.ptr.is_null() {
+                let dropper: unsafe extern "C" fn(*mut c_void) = std::mem::transmute(owned.drop_fn);
+                dropper(owned.ptr);
             }
         }
     }
 }
 
-impl WireFunction for drop_heap_allocated {
+impl WireFunction for drop_owned {
     fn get_function_info() -> FunctionInfo {
         FunctionInfo::new(
-            "drop_heap_allocated",
-            vec![FunctionParameter::new(
-                "ha",
-                HeapAllocatedRaw::get_type_info(),
-            )],
-            TypeInfo::new("()", Vec::new(), TypeKind::Void, false),
+            "drop_owned",
+            vec![FunctionParameter::new("owned", OwnedRaw::get_type_info())],
+            TypeInfo::new("()", Vec::new(), TypeKind::Void, vec![], &[]),
             false,
         )
     }
 }
 
-impl HeapAllocatedRaw {
+impl OwnedRaw {
     pub fn new<T>(value: T) -> Self {
         let boxed = Box::new(value);
         unsafe extern "C" fn drop_typed<T>(ptr: *mut c_void) {
@@ -83,30 +79,33 @@ impl HeapAllocatedRaw {
 pub fn get_utils_registry() -> oxidizer_core::registry::Registry {
     let mut registry = oxidizer_core::registry::Registry::new();
 
-    // Register drop function so C# can call it to dispose heap allocations
-    registry.register_function::<drop_heap_allocated>();
+    // Register drop function so the caller can dispose owned allocations
+    registry.register_function::<drop_owned>();
+
+    // Register drop function for owned slices
+    registry.register_function::<drop_owned_slice>();
 
     registry
 }
 
-/// Type-safe wrapper for heap-allocated values passed across FFI.
+/// Type-safe wrapper for owned values passed across FFI.
 ///
-/// This is the public API for creating heap-allocated objects that can be
-/// passed to C#. The C# side receives this as `HeapHandle<T>`.
+/// This is the public API for creating owned objects that can be
+/// passed across FFI. The caller receives an opaque handle.
 #[repr(transparent)]
-pub struct HeapAllocated<T> {
-    inner: HeapAllocatedRaw,
+pub struct Owned<T> {
+    inner: OwnedRaw,
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T> HeapAllocated<T> {
-    /// Create a new heap-allocated value.
+impl<T> Owned<T> {
+    /// Create a new owned value.
     ///
     /// The value is boxed and ownership is transferred to the FFI boundary.
-    /// The C# side is responsible for disposing the handle.
+    /// The caller is responsible for disposing the handle.
     pub fn new(value: T) -> Self {
         Self {
-            inner: HeapAllocatedRaw::new(value),
+            inner: OwnedRaw::new(value),
             _marker: std::marker::PhantomData,
         }
     }
@@ -130,23 +129,373 @@ impl<T> HeapAllocated<T> {
     }
 }
 
-impl<T> WireType for HeapAllocated<T>
+impl<T> WireType for Owned<T>
 where
     T: WireType,
 {
     fn get_type_info() -> TypeInfo {
-        // Get the inner type's info to build the HeapAllocated type name
+        // Get the inner type's info to build the Owned type name
         let inner_type_info = T::get_type_info();
-        let type_name =
-            Box::leak(format!("HeapAllocated<{}>", inner_type_info.name()).into_boxed_str());
+        let type_name = Box::leak(format!("Owned<{}>", inner_type_info.name()).into_boxed_str());
 
-        // HeapAllocated<T> has the same layout as HeapAllocatedRaw due to #[repr(transparent)]
-        let raw_info = HeapAllocatedRaw::get_type_info();
+        // Owned<T> has the same layout as OwnedRaw due to #[repr(transparent)]
+        let raw_info = OwnedRaw::get_type_info();
         TypeInfo::new(
             type_name,
             raw_info.fields().clone(),
-            oxidizer_core::TypeKind::UserDefined,
-            true, // is_heap_allocated
+            TypeKind::Struct,
+            vec![inner_type_info],
+            &[("ffi_repr", "owned")],
+        )
+    }
+}
+
+// =============================================================================
+// FFISlice - Borrowed immutable slice (caller -> Rust only)
+// =============================================================================
+
+/// Borrowed immutable slice for FFI, for receiving data from the caller.
+///
+/// This type can only be received from the caller, not constructed in Rust.
+/// For providing slice data from Rust to the caller, use [`SliceCallback`]
+/// instead, which provides safe scoped access.
+///
+/// # Safety
+/// The caller must ensure the underlying data outlives the FFI call.
+#[repr(C)]
+pub struct FFISlice<T> {
+    ptr: *const T,
+    len: usize,
+}
+
+impl<T> FFISlice<T> {
+    /// Get the slice as a Rust slice reference.
+    ///
+    /// # Safety
+    /// The caller must ensure:
+    /// - The pointer is valid and properly aligned
+    /// - The underlying data has not been freed
+    /// - No mutable references exist to the same data
+    pub unsafe fn as_slice(&self) -> &[T] {
+        if self.ptr.is_null() || self.len == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+        }
+    }
+
+    /// Get the length of the slice.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Check if the slice is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<T: WireType> WireType for FFISlice<T> {
+    fn get_type_info() -> TypeInfo {
+        let element_info = T::get_type_info();
+        let type_name = Box::leak(format!("FFISlice<{}>", element_info.name()).into_boxed_str());
+
+        TypeInfo::new(
+            type_name,
+            vec![],
+            TypeKind::Struct,
+            vec![element_info],
+            &[("ffi_repr", "slice")],
+        )
+    }
+}
+
+// =============================================================================
+// FFISliceMut - Borrowed mutable slice (caller -> Rust only)
+// =============================================================================
+
+/// Borrowed mutable slice for FFI, for receiving data from the caller.
+///
+/// This type can only be received from the caller, not constructed in Rust.
+/// For providing slice data from Rust to the caller, use [`SliceCallback`]
+/// instead, which provides safe scoped access.
+///
+/// # Safety
+/// The caller must ensure the underlying data outlives the FFI call
+/// and that no other references to the data exist during the call.
+#[repr(C)]
+pub struct FFISliceMut<T> {
+    ptr: *mut T,
+    len: usize,
+}
+
+impl<T> FFISliceMut<T> {
+    /// Get the slice as a Rust slice reference.
+    ///
+    /// # Safety
+    /// The caller must ensure:
+    /// - The pointer is valid and properly aligned
+    /// - The underlying data has not been freed
+    /// - No other references exist to the same data
+    pub unsafe fn as_slice(&self) -> &[T] {
+        if self.ptr.is_null() || self.len == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+        }
+    }
+
+    /// Get the slice as a mutable Rust slice reference.
+    ///
+    /// # Safety
+    /// The caller must ensure:
+    /// - The pointer is valid and properly aligned
+    /// - The underlying data has not been freed
+    /// - No other references exist to the same data
+    pub unsafe fn as_slice_mut(&mut self) -> &mut [T] {
+        if self.ptr.is_null() || self.len == 0 {
+            &mut []
+        } else {
+            unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
+        }
+    }
+
+    /// Get the length of the slice.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Check if the slice is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<T: WireType> WireType for FFISliceMut<T> {
+    fn get_type_info() -> TypeInfo {
+        let element_info = T::get_type_info();
+        let type_name = Box::leak(format!("FFISliceMut<{}>", element_info.name()).into_boxed_str());
+
+        TypeInfo::new(
+            type_name,
+            vec![],
+            TypeKind::Struct,
+            vec![element_info],
+            &[("ffi_repr", "slice_mut")],
+        )
+    }
+}
+
+// =============================================================================
+// FFISliceRaw - Type-erased borrowed slice for FFI boundary
+// =============================================================================
+
+/// Type-erased borrowed slice for FFI boundary.
+///
+/// This is the raw representation used at the C FFI boundary.
+#[repr(C)]
+pub struct FFISliceRaw {
+    pub ptr: *const c_void,
+    pub len: usize,
+}
+
+impl WireType for FFISliceRaw {
+    fn get_type_info() -> TypeInfo {
+        let fields = vec![
+            FieldInfo::new("ptr", <*const c_void as WireType>::get_type_info()),
+            FieldInfo::new("len", <usize as WireType>::get_type_info()),
+        ];
+        TypeInfo::new("FFISliceRaw", fields, TypeKind::Struct, vec![], &[])
+    }
+}
+
+// =============================================================================
+// OwnedSlice - Owned Vec transfer
+// =============================================================================
+
+/// Owned slice for transferring Vec ownership across FFI.
+///
+/// This type takes ownership of a Vec and transfers it across the FFI boundary.
+/// The caller receives ownership and must call the drop function to free the memory.
+#[repr(C)]
+pub struct OwnedSlice<T> {
+    ptr: *mut T,
+    len: usize,
+    capacity: usize,
+    element_size: usize,
+    drop_fn: *const c_void,
+}
+
+impl<T> OwnedSlice<T> {
+    /// Create an OwnedSlice from a Vec, transferring ownership.
+    ///
+    /// The Vec's memory will be managed by the FFI boundary.
+    /// Call `drop_owned_slice` to free the memory.
+    pub fn from_vec(vec: Vec<T>) -> Self {
+        let mut vec = std::mem::ManuallyDrop::new(vec);
+
+        unsafe extern "C" fn drop_vec<T>(ptr: *mut c_void, len: usize, capacity: usize) {
+            unsafe {
+                // Reconstruct and drop the Vec
+                let _ = Vec::from_raw_parts(ptr as *mut T, len, capacity);
+            }
+        }
+
+        Self {
+            ptr: vec.as_mut_ptr(),
+            len: vec.len(),
+            capacity: vec.capacity(),
+            element_size: std::mem::size_of::<T>(),
+            drop_fn: drop_vec::<T> as *const c_void,
+        }
+    }
+
+    /// Get the slice as a Rust slice reference.
+    ///
+    /// # Safety
+    /// The caller must ensure the OwnedSlice has not been dropped.
+    pub unsafe fn as_slice(&self) -> &[T] {
+        if self.ptr.is_null() || self.len == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+        }
+    }
+
+    /// Get the length of the slice.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Check if the slice is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<T: WireType> WireType for OwnedSlice<T> {
+    fn get_type_info() -> TypeInfo {
+        let element_info = T::get_type_info();
+        let type_name = Box::leak(format!("OwnedSlice<{}>", element_info.name()).into_boxed_str());
+
+        TypeInfo::new(
+            type_name,
+            vec![],
+            TypeKind::Struct,
+            vec![element_info],
+            &[("ffi_repr", "owned_slice")],
+        )
+    }
+}
+
+// =============================================================================
+// OwnedSliceRaw - Type-erased owned slice for FFI boundary
+// =============================================================================
+
+/// Type-erased owned slice for FFI boundary.
+///
+/// This is the raw representation used at the C FFI boundary.
+#[repr(C)]
+pub struct OwnedSliceRaw {
+    pub ptr: *mut c_void,
+    pub len: usize,
+    pub capacity: usize,
+    pub element_size: usize,
+    pub drop_fn: *const c_void,
+}
+
+impl WireType for OwnedSliceRaw {
+    fn get_type_info() -> TypeInfo {
+        let fields = vec![
+            FieldInfo::new("ptr", <*mut c_void as WireType>::get_type_info()),
+            FieldInfo::new("len", <usize as WireType>::get_type_info()),
+            FieldInfo::new("capacity", <usize as WireType>::get_type_info()),
+            FieldInfo::new("element_size", <usize as WireType>::get_type_info()),
+            FieldInfo::new("drop_fn", <*const c_void as WireType>::get_type_info()),
+        ];
+        TypeInfo::new("OwnedSliceRawHandle", fields, TypeKind::Struct, vec![], &[])
+    }
+}
+
+// =============================================================================
+// drop_owned_slice - FFI cleanup function
+// =============================================================================
+
+#[allow(non_camel_case_types)]
+pub struct drop_owned_slice;
+
+impl drop_owned_slice {
+    #[unsafe(export_name = "drop_owned_slice")]
+    pub extern "C" fn call(os: OwnedSliceRaw) {
+        unsafe {
+            if !os.ptr.is_null() && !os.drop_fn.is_null() {
+                let dropper: unsafe extern "C" fn(*mut c_void, usize, usize) =
+                    std::mem::transmute(os.drop_fn);
+                dropper(os.ptr, os.len, os.capacity);
+            }
+        }
+    }
+}
+
+impl WireFunction for drop_owned_slice {
+    fn get_function_info() -> FunctionInfo {
+        FunctionInfo::new(
+            "drop_owned_slice",
+            vec![FunctionParameter::new("os", OwnedSliceRaw::get_type_info())],
+            TypeInfo::new("()", Vec::new(), TypeKind::Void, vec![], &[]),
+            false,
+        )
+    }
+}
+
+// =============================================================================
+// SliceCallback - Callback for scoped slice access
+// =============================================================================
+
+/// A callback that receives a borrowed slice.
+///
+/// This provides safe scoped access to slice data across FFI. The slice is only
+/// valid during the callback invocation - Rust controls the lifetime.
+///
+/// # Example
+/// ```ignore
+/// #[ffi_function]
+/// fn with_data(callback: SliceCallback<u64>) {
+///     let data: Vec<u64> = vec![1, 2, 3, 4, 5];
+///     callback.call(&data);
+/// }
+/// ```
+#[repr(C)]
+pub struct SliceCallback<T> {
+    id: u64,
+    func: extern "C" fn(u64, FFISlice<T>),
+}
+
+impl<T> SliceCallback<T> {
+    /// Invoke the callback with the given slice.
+    ///
+    /// The slice data is only valid for the duration of this call.
+    pub fn call(&self, slice: &[T]) {
+        let ffi_slice = FFISlice {
+            ptr: slice.as_ptr(),
+            len: slice.len(),
+        };
+        (self.func)(self.id, ffi_slice);
+    }
+}
+
+impl<T: WireType> WireType for SliceCallback<T> {
+    fn get_type_info() -> TypeInfo {
+        let element_info = T::get_type_info();
+        let type_name =
+            Box::leak(format!("SliceCallback<{}>", element_info.name()).into_boxed_str());
+
+        TypeInfo::new(
+            type_name,
+            vec![],
+            TypeKind::Struct,
+            vec![element_info],
+            &[("ffi_repr", "slice_callback")],
         )
     }
 }
