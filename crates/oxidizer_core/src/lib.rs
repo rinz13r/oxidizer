@@ -53,7 +53,7 @@ impl FieldInfo {
     }
 }
 
-#[derive(Debug, Clone, new, Getters)]
+#[derive(Debug, Clone, Getters, new)]
 pub struct TypeInfo {
     #[getter(skip)]
     name: &'static str,

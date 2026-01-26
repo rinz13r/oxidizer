@@ -8,6 +8,28 @@ use oxidizer_core::{
 // because the macros generate code that references ::oxidizer::, which would create
 // a circular dependency (oxidizer depends on oxidizer_utils).
 
+// Constants for raw type names (used in C# generation)
+const OWNED_RAW_NAME: &str = "OwnedRawHandle";
+const OWNED_SLICE_RAW_NAME: &str = "OwnedSliceRawHandle";
+const FFI_SLICE_RAW_NAME: &str = "FFISliceRaw";
+
+// Constants for type IDs (used in metadata to link wrapper types to raw types)
+const OWNED_RAW_TYPE_ID: &str = "owned_raw";
+const OWNED_SLICE_RAW_TYPE_ID: &str = "owned_slice_raw";
+const FFI_SLICE_RAW_TYPE_ID: &str = "ffi_slice_raw";
+
+// Constants for metadata keys
+const META_TYPE_ID: &str = "type_id";
+const META_RAW_TYPE_ID: &str = "raw_type_id";
+const META_FFI_REPR: &str = "ffi_repr";
+
+// Constants for FFI representation values
+const FFI_REPR_OWNED: &str = "owned";
+const FFI_REPR_OWNED_SLICE: &str = "owned_slice";
+const FFI_REPR_SLICE: &str = "slice";
+const FFI_REPR_SLICE_MUT: &str = "slice_mut";
+const FFI_REPR_SLICE_CALLBACK: &str = "slice_callback";
+
 #[repr(C)]
 pub struct OwnedRaw {
     ptr: *mut c_void,
@@ -20,7 +42,13 @@ impl WireType for OwnedRaw {
             FieldInfo::new("ptr", <*mut c_void as WireType>::get_type_info()),
             FieldInfo::new("drop_fn", <*const c_void as WireType>::get_type_info()),
         ];
-        TypeInfo::new("OwnedRawHandle", fields, TypeKind::Struct, vec![], &[])
+        TypeInfo::new(
+            OWNED_RAW_NAME,
+            fields,
+            TypeKind::Struct,
+            vec![],
+            &[(META_TYPE_ID, OWNED_RAW_TYPE_ID)],
+        )
     }
 }
 
@@ -78,6 +106,11 @@ impl OwnedRaw {
 
 pub fn get_utils_registry() -> oxidizer_core::registry::Registry {
     let mut registry = oxidizer_core::registry::Registry::new();
+
+    // Register raw types so the C# generator can generate them from TypeInfo
+    registry.register_type::<OwnedRaw>();
+    registry.register_type::<OwnedSliceRaw>();
+    registry.register_type::<FFISliceRaw>();
 
     // Register drop function so the caller can dispose owned allocations
     registry.register_function::<drop_owned>();
@@ -145,7 +178,10 @@ where
             raw_info.fields().clone(),
             TypeKind::Struct,
             vec![inner_type_info],
-            &[("ffi_repr", "owned")],
+            &[
+                (META_FFI_REPR, FFI_REPR_OWNED),
+                (META_RAW_TYPE_ID, OWNED_RAW_TYPE_ID),
+            ],
         )
     }
 }
@@ -205,7 +241,10 @@ impl<T: WireType> WireType for FFISlice<T> {
             vec![],
             TypeKind::Struct,
             vec![element_info],
-            &[("ffi_repr", "slice")],
+            &[
+                (META_FFI_REPR, FFI_REPR_SLICE),
+                (META_RAW_TYPE_ID, FFI_SLICE_RAW_TYPE_ID),
+            ],
         )
     }
 }
@@ -281,7 +320,10 @@ impl<T: WireType> WireType for FFISliceMut<T> {
             vec![],
             TypeKind::Struct,
             vec![element_info],
-            &[("ffi_repr", "slice_mut")],
+            &[
+                (META_FFI_REPR, FFI_REPR_SLICE_MUT),
+                (META_RAW_TYPE_ID, FFI_SLICE_RAW_TYPE_ID),
+            ],
         )
     }
 }
@@ -305,7 +347,13 @@ impl WireType for FFISliceRaw {
             FieldInfo::new("ptr", <*const c_void as WireType>::get_type_info()),
             FieldInfo::new("len", <usize as WireType>::get_type_info()),
         ];
-        TypeInfo::new("FFISliceRaw", fields, TypeKind::Struct, vec![], &[])
+        TypeInfo::new(
+            FFI_SLICE_RAW_NAME,
+            fields,
+            TypeKind::Struct,
+            vec![],
+            &[(META_TYPE_ID, FFI_SLICE_RAW_TYPE_ID)],
+        )
     }
 }
 
@@ -383,7 +431,10 @@ impl<T: WireType> WireType for OwnedSlice<T> {
             vec![],
             TypeKind::Struct,
             vec![element_info],
-            &[("ffi_repr", "owned_slice")],
+            &[
+                (META_FFI_REPR, FFI_REPR_OWNED_SLICE),
+                (META_RAW_TYPE_ID, OWNED_SLICE_RAW_TYPE_ID),
+            ],
         )
     }
 }
@@ -413,7 +464,13 @@ impl WireType for OwnedSliceRaw {
             FieldInfo::new("element_size", <usize as WireType>::get_type_info()),
             FieldInfo::new("drop_fn", <*const c_void as WireType>::get_type_info()),
         ];
-        TypeInfo::new("OwnedSliceRawHandle", fields, TypeKind::Struct, vec![], &[])
+        TypeInfo::new(
+            OWNED_SLICE_RAW_NAME,
+            fields,
+            TypeKind::Struct,
+            vec![],
+            &[(META_TYPE_ID, OWNED_SLICE_RAW_TYPE_ID)],
+        )
     }
 }
 
@@ -495,7 +552,7 @@ impl<T: WireType> WireType for SliceCallback<T> {
             vec![],
             TypeKind::Struct,
             vec![element_info],
-            &[("ffi_repr", "slice_callback")],
+            &[(META_FFI_REPR, FFI_REPR_SLICE_CALLBACK)],
         )
     }
 }

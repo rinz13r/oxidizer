@@ -1,6 +1,23 @@
 use oxidizer_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
 use std::collections::HashMap;
 
+// Constants for type IDs (must match oxidizer_utils)
+const OWNED_RAW_TYPE_ID: &str = "owned_raw";
+const OWNED_SLICE_RAW_TYPE_ID: &str = "owned_slice_raw";
+const FFI_SLICE_RAW_TYPE_ID: &str = "ffi_slice_raw";
+
+// Constants for metadata keys (must match oxidizer_utils)
+const META_TYPE_ID: &str = "type_id";
+const META_RAW_TYPE_ID: &str = "raw_type_id";
+const META_FFI_REPR: &str = "ffi_repr";
+
+// Constants for FFI representation values (must match oxidizer_utils)
+const FFI_REPR_OWNED: &str = "owned";
+const FFI_REPR_OWNED_SLICE: &str = "owned_slice";
+const FFI_REPR_SLICE: &str = "slice";
+const FFI_REPR_SLICE_MUT: &str = "slice_mut";
+const FFI_REPR_SLICE_CALLBACK: &str = "slice_callback";
+
 /// FFI representation of a type, determined from metadata
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FFIRepr {
@@ -21,12 +38,12 @@ pub enum FFIRepr {
 impl FFIRepr {
     /// Determine FFI representation from type metadata
     pub fn from_type_info(type_info: &TypeInfo) -> Self {
-        match type_info.get_metadata("ffi_repr") {
-            Some("owned") => FFIRepr::Owned,
-            Some("owned_slice") => FFIRepr::OwnedSlice,
-            Some("slice") => FFIRepr::Slice,
-            Some("slice_mut") => FFIRepr::SliceMut,
-            Some("slice_callback") => FFIRepr::SliceCallback,
+        match type_info.get_metadata(META_FFI_REPR) {
+            Some(v) if v == FFI_REPR_OWNED => FFIRepr::Owned,
+            Some(v) if v == FFI_REPR_OWNED_SLICE => FFIRepr::OwnedSlice,
+            Some(v) if v == FFI_REPR_SLICE => FFIRepr::Slice,
+            Some(v) if v == FFI_REPR_SLICE_MUT => FFIRepr::SliceMut,
+            Some(v) if v == FFI_REPR_SLICE_CALLBACK => FFIRepr::SliceCallback,
             _ => FFIRepr::Direct,
         }
     }
@@ -47,9 +64,23 @@ impl CSharpGenerator {
         Self { library_name }
     }
 
+    /// Build a lookup map from type_id metadata to TypeInfo
+    fn build_type_id_map(&self, registry: &Registry) -> HashMap<String, TypeInfo> {
+        let mut map = HashMap::new();
+        for type_info in registry.types() {
+            if let Some(type_id) = type_info.get_metadata(META_TYPE_ID) {
+                map.insert(type_id.to_string(), type_info.clone());
+            }
+        }
+        map
+    }
+
     /// Generates complete C# bindings from a Registry according to the async strategy
     pub fn generate_csharp(&self, registry: &Registry) -> String {
         let mut output = String::new();
+
+        // Build type_id lookup map for infrastructure types
+        let type_id_map = self.build_type_id_map(registry);
 
         // Add file header and usings
         output.push_str(&self.generate_file_header());
@@ -59,7 +90,7 @@ impl CSharpGenerator {
 
         // Generate registrar classes for async functions
         for return_type in &async_return_types {
-            output.push_str(&self.generate_registrar_class(return_type));
+            output.push_str(&self.generate_registrar_class(return_type, &type_id_map));
             output.push('\n');
         }
 
@@ -68,16 +99,19 @@ impl CSharpGenerator {
 
         // Generate slice callback registrar classes
         for element_type in &slice_callback_types {
-            output.push_str(&self.generate_slice_callback_registrar(element_type));
+            output.push_str(&self.generate_slice_callback_registrar(element_type, &type_id_map));
             output.push('\n');
         }
 
-        // Generate OwnedRawHandle struct (internal) and OwnedHandle<T> class
-        output.push_str(&self.generate_owned_infrastructure());
+        // Generate infrastructure types from registry (raw structs)
+        output.push_str(&self.generate_infrastructure_types(&type_id_map));
+
+        // Generate wrapper classes for owned types
+        output.push_str(&self.generate_owned_wrapper_class(&type_id_map));
         output.push('\n');
 
-        // Generate slice infrastructure (FFISliceRaw, OwnedSliceRawHandle, OwnedSliceHandle<T>, etc.)
-        output.push_str(&self.generate_slice_infrastructure());
+        // Generate slice wrapper classes
+        output.push_str(&self.generate_slice_wrapper_classes(&type_id_map));
         output.push('\n');
 
         // Generate slice callback struct if needed
@@ -102,10 +136,12 @@ impl CSharpGenerator {
                 }
                 FFIRepr::Direct => {
                     // For value types with fields, generate full struct
+                    // Skip types that have a type_id (they are infrastructure types, already generated)
                     if matches!(type_info.kind(), TypeKind::Struct)
                         && !type_info.fields().is_empty()
+                        && type_info.get_metadata(META_TYPE_ID).is_none()
                     {
-                        output.push_str(&self.generate_struct(type_info));
+                        output.push_str(&self.generate_struct(type_info, &type_id_map));
                         output.push('\n');
                     }
                 }
@@ -119,9 +155,9 @@ impl CSharpGenerator {
         // Generate function bindings
         for function in registry.functions() {
             if *function.is_async() {
-                output.push_str(&self.generate_async_function_binding(function));
+                output.push_str(&self.generate_async_function_binding(function, &type_id_map));
             } else {
-                output.push_str(&self.generate_sync_function_binding(function));
+                output.push_str(&self.generate_sync_function_binding(function, &type_id_map));
             }
             output.push('\n');
         }
@@ -168,6 +204,204 @@ impl CSharpGenerator {
         element_types.into_values().collect()
     }
 
+    /// Generate infrastructure types (raw structs) from TypeInfo in the registry
+    fn generate_infrastructure_types(&self, type_id_map: &HashMap<String, TypeInfo>) -> String {
+        let mut output = String::new();
+
+        // Generate each infrastructure type from its TypeInfo
+        for type_id in [
+            OWNED_RAW_TYPE_ID,
+            OWNED_SLICE_RAW_TYPE_ID,
+            FFI_SLICE_RAW_TYPE_ID,
+        ] {
+            if let Some(type_info) = type_id_map.get(type_id) {
+                output.push_str(&self.generate_infrastructure_struct(type_info, type_id_map));
+                output.push('\n');
+            }
+        }
+
+        output
+    }
+
+    /// Generate a single infrastructure struct from TypeInfo
+    fn generate_infrastructure_struct(
+        &self,
+        type_info: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
+        let mut output = String::new();
+
+        output.push_str(&format!(
+            "/// <summary>FFI infrastructure type: {}</summary>\n",
+            type_info.name()
+        ));
+        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
+        output.push_str(&format!("public struct {}\n", type_info.name()));
+        output.push_str("{\n");
+
+        for field in type_info.fields() {
+            let csharp_type = self.rust_type_to_csharp_type(field.ty(), type_id_map);
+            let field_name = self.to_pascal_case(field.name());
+            output.push_str(&format!("    public {csharp_type} {field_name};\n"));
+        }
+
+        output.push_str("}\n");
+        output
+    }
+
+    /// Generate the OwnedHandle<T> wrapper class
+    fn generate_owned_wrapper_class(&self, type_id_map: &HashMap<String, TypeInfo>) -> String {
+        let mut output = String::new();
+
+        // Get the raw type name from the registry
+        let raw_type_name = type_id_map
+            .get(OWNED_RAW_TYPE_ID)
+            .map(|t| t.name().to_string())
+            .unwrap_or_else(|| "OwnedRawHandle".to_string());
+
+        output.push_str("/// <summary>\n");
+        output.push_str("/// Type-safe wrapper for owned Rust objects.\n");
+        output
+            .push_str("/// Implements IDisposable to ensure proper cleanup of native resources.\n");
+        output.push_str("/// </summary>\n");
+        output.push_str("public sealed class OwnedHandle<T> : IDisposable\n");
+        output.push_str("{\n");
+        output.push_str(&format!("    private {raw_type_name} _raw;\n"));
+        output.push_str("    private bool _disposed;\n\n");
+
+        output.push_str(&format!(
+            "    internal OwnedHandle({raw_type_name} raw) => _raw = raw;\n"
+        ));
+        output.push_str(&format!("    internal {raw_type_name} Raw => _raw;\n\n"));
+
+        output.push_str("    public void Dispose()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_disposed) return;\n");
+        output.push_str("        _disposed = true;\n\n");
+        output.push_str("        if (_raw.Ptr != IntPtr.Zero)\n");
+        output.push_str("        {\n");
+        output.push_str("            Bindings.DropOwned(_raw);\n");
+        output.push_str("            _raw.Ptr = IntPtr.Zero;\n");
+        output.push_str("        }\n");
+        output.push_str("    }\n");
+        output.push_str("}\n");
+
+        output
+    }
+
+    /// Generate slice wrapper classes (ReadOnlySliceHandle, SliceHandle, OwnedSliceHandle)
+    fn generate_slice_wrapper_classes(&self, type_id_map: &HashMap<String, TypeInfo>) -> String {
+        let mut output = String::new();
+
+        let ffi_slice_raw_name = type_id_map
+            .get(FFI_SLICE_RAW_TYPE_ID)
+            .map(|t| t.name().to_string())
+            .unwrap_or_else(|| "FFISliceRaw".to_string());
+
+        let owned_slice_raw_name = type_id_map
+            .get(OWNED_SLICE_RAW_TYPE_ID)
+            .map(|t| t.name().to_string())
+            .unwrap_or_else(|| "OwnedSliceRawHandle".to_string());
+
+        // ReadOnlySliceHandle<T>
+        output.push_str("/// <summary>\n");
+        output.push_str("/// Read-only view into a borrowed Rust slice.\n");
+        output.push_str("/// The underlying data is owned by Rust and must not be modified.\n");
+        output.push_str("/// </summary>\n");
+        output.push_str("public readonly ref struct ReadOnlySliceHandle<T> where T : unmanaged\n");
+        output.push_str("{\n");
+        output.push_str(&format!(
+            "    private readonly {ffi_slice_raw_name} _raw;\n\n"
+        ));
+        output.push_str(&format!(
+            "    internal ReadOnlySliceHandle({ffi_slice_raw_name} raw) => _raw = raw;\n\n"
+        ));
+        output.push_str("    public int Length => (int)_raw.Len;\n\n");
+        output.push_str("    public unsafe ReadOnlySpan<T> AsSpan()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
+        output.push_str("            return ReadOnlySpan<T>.Empty;\n");
+        output.push_str("        return new ReadOnlySpan<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
+        output.push_str("    }\n");
+        output.push_str("}\n\n");
+
+        // SliceHandle<T>
+        output.push_str("/// <summary>\n");
+        output.push_str("/// Mutable view into a borrowed Rust slice.\n");
+        output.push_str("/// </summary>\n");
+        output.push_str("public readonly ref struct SliceHandle<T> where T : unmanaged\n");
+        output.push_str("{\n");
+        output.push_str(&format!(
+            "    private readonly {ffi_slice_raw_name} _raw;\n\n"
+        ));
+        output.push_str(&format!(
+            "    internal SliceHandle({ffi_slice_raw_name} raw) => _raw = raw;\n\n"
+        ));
+        output.push_str("    public int Length => (int)_raw.Len;\n\n");
+        output.push_str("    public unsafe Span<T> AsSpan()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
+        output.push_str("            return Span<T>.Empty;\n");
+        output.push_str("        return new Span<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
+        output.push_str("    }\n");
+        output.push_str("}\n\n");
+
+        // OwnedSliceHandle<T>
+        output.push_str("/// <summary>\n");
+        output.push_str("/// Owned array transferred from Rust.\n");
+        output
+            .push_str("/// Implements IDisposable to ensure proper cleanup of native resources.\n");
+        output.push_str("/// </summary>\n");
+        output.push_str(
+            "public sealed class OwnedSliceHandle<T> : IDisposable where T : unmanaged\n",
+        );
+        output.push_str("{\n");
+        output.push_str(&format!("    private {owned_slice_raw_name} _raw;\n"));
+        output.push_str("    private bool _disposed;\n\n");
+
+        output.push_str(&format!(
+            "    internal OwnedSliceHandle({owned_slice_raw_name} raw) => _raw = raw;\n"
+        ));
+        output.push_str(&format!(
+            "    internal {owned_slice_raw_name} Raw => _raw;\n\n"
+        ));
+
+        output.push_str("    public int Length => (int)_raw.Len;\n\n");
+
+        output.push_str("    public unsafe ReadOnlySpan<T> AsSpan()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_disposed) throw new ObjectDisposedException(nameof(OwnedSliceHandle<T>));\n");
+        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
+        output.push_str("            return ReadOnlySpan<T>.Empty;\n");
+        output.push_str("        return new ReadOnlySpan<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
+        output.push_str("    }\n\n");
+
+        output.push_str("    public T this[int index]\n");
+        output.push_str("    {\n");
+        output.push_str("        get\n");
+        output.push_str("        {\n");
+        output.push_str("            if (_disposed) throw new ObjectDisposedException(nameof(OwnedSliceHandle<T>));\n");
+        output.push_str("            if (index < 0 || index >= (int)_raw.Len)\n");
+        output.push_str("                throw new IndexOutOfRangeException();\n");
+        output.push_str("            unsafe { return ((T*)_raw.Ptr)[index]; }\n");
+        output.push_str("        }\n");
+        output.push_str("    }\n\n");
+
+        output.push_str("    public void Dispose()\n");
+        output.push_str("    {\n");
+        output.push_str("        if (_disposed) return;\n");
+        output.push_str("        _disposed = true;\n\n");
+        output.push_str("        if (_raw.Ptr != IntPtr.Zero)\n");
+        output.push_str("        {\n");
+        output.push_str("            Bindings.DropOwnedSlice(_raw);\n");
+        output.push_str("            _raw.Ptr = IntPtr.Zero;\n");
+        output.push_str("        }\n");
+        output.push_str("    }\n");
+        output.push_str("}\n");
+
+        output
+    }
+
     /// Generate the SliceCallback struct (generic, only needs to be emitted once)
     fn generate_slice_callback_struct(&self) -> String {
         let mut output = String::new();
@@ -184,9 +418,13 @@ impl CSharpGenerator {
     }
 
     /// Generate a registrar class for slice callbacks of a specific element type
-    fn generate_slice_callback_registrar(&self, element_type: &TypeInfo) -> String {
+    fn generate_slice_callback_registrar(
+        &self,
+        element_type: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
         let mut output = String::new();
-        let csharp_element_type = self.rust_type_to_csharp_type(element_type);
+        let csharp_element_type = self.rust_type_to_csharp_type(element_type, type_id_map);
         let class_name = format!("SliceCallbackRegistrar_{csharp_element_type}");
 
         output.push_str(&format!("class {class_name}\n{{\n"));
@@ -245,10 +483,14 @@ impl CSharpGenerator {
         output
     }
 
-    fn generate_registrar_class(&self, return_type: &TypeInfo) -> String {
+    fn generate_registrar_class(
+        &self,
+        return_type: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
         let mut output = String::new();
-        let class_name = self.get_registrar_class_name(return_type);
-        let csharp_type = self.rust_type_to_csharp_type(return_type);
+        let class_name = self.get_registrar_class_name(return_type, type_id_map);
+        let csharp_type = self.rust_type_to_csharp_type(return_type, type_id_map);
 
         output.push_str(&format!("class {class_name}\n{{\n"));
         output.push_str(&format!(
@@ -302,161 +544,6 @@ impl CSharpGenerator {
         output
     }
 
-    /// Generate the OwnedRawHandle struct (internal) and OwnedHandle<T> class
-    fn generate_owned_infrastructure(&self) -> String {
-        let mut output = String::new();
-
-        // Internal OwnedRawHandle struct
-        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
-        output.push_str("public struct OwnedRawHandle\n");
-        output.push_str("{\n");
-        output.push_str("    public IntPtr Ptr;\n");
-        output.push_str("    public IntPtr DropFn;\n");
-        output.push_str("}\n\n");
-
-        // Generic OwnedHandle<T> class
-        output.push_str("/// <summary>\n");
-        output.push_str("/// Type-safe wrapper for owned Rust objects.\n");
-        output
-            .push_str("/// Implements IDisposable to ensure proper cleanup of native resources.\n");
-        output.push_str("/// </summary>\n");
-        output.push_str("public sealed class OwnedHandle<T> : IDisposable\n");
-        output.push_str("{\n");
-        output.push_str("    private OwnedRawHandle _raw;\n");
-        output.push_str("    private bool _disposed;\n\n");
-
-        output.push_str("    internal OwnedHandle(OwnedRawHandle raw) => _raw = raw;\n");
-        output.push_str("    internal OwnedRawHandle Raw => _raw;\n\n");
-
-        output.push_str("    public void Dispose()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_disposed) return;\n");
-        output.push_str("        _disposed = true;\n\n");
-        output.push_str("        if (_raw.Ptr != IntPtr.Zero)\n");
-        output.push_str("        {\n");
-        output.push_str("            Bindings.DropOwned(_raw);\n");
-        output.push_str("            _raw.Ptr = IntPtr.Zero;\n");
-        output.push_str("        }\n");
-        output.push_str("    }\n");
-        output.push_str("}\n");
-
-        output
-    }
-
-    /// Generate slice infrastructure types
-    fn generate_slice_infrastructure(&self) -> String {
-        let mut output = String::new();
-
-        // FFISliceRaw - type-erased borrowed slice
-        output.push_str("/// <summary>Type-erased borrowed slice for FFI boundary.</summary>\n");
-        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
-        output.push_str("public struct FFISliceRaw\n");
-        output.push_str("{\n");
-        output.push_str("    public IntPtr Ptr;\n");
-        output.push_str("    public nuint Len;\n");
-        output.push_str("}\n\n");
-
-        // OwnedSliceRawHandle - type-erased owned slice
-        output.push_str("/// <summary>Type-erased owned slice for FFI boundary.</summary>\n");
-        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
-        output.push_str("public struct OwnedSliceRawHandle\n");
-        output.push_str("{\n");
-        output.push_str("    public IntPtr Ptr;\n");
-        output.push_str("    public nuint Len;\n");
-        output.push_str("    public nuint Capacity;\n");
-        output.push_str("    public nuint ElementSize;\n");
-        output.push_str("    public IntPtr DropFn;\n");
-        output.push_str("}\n\n");
-
-        // ReadOnlySliceHandle<T> - wrapper for borrowed slices
-        output.push_str("/// <summary>\n");
-        output.push_str("/// Read-only view into a borrowed Rust slice.\n");
-        output.push_str("/// The underlying data is owned by Rust and must not be modified.\n");
-        output.push_str("/// </summary>\n");
-        output.push_str("public readonly ref struct ReadOnlySliceHandle<T> where T : unmanaged\n");
-        output.push_str("{\n");
-        output.push_str("    private readonly FFISliceRaw _raw;\n\n");
-        output.push_str("    internal ReadOnlySliceHandle(FFISliceRaw raw) => _raw = raw;\n\n");
-        output.push_str("    public int Length => (int)_raw.Len;\n\n");
-        output.push_str("    public unsafe ReadOnlySpan<T> AsSpan()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
-        output.push_str("            return ReadOnlySpan<T>.Empty;\n");
-        output.push_str("        return new ReadOnlySpan<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
-        output.push_str("    }\n");
-        output.push_str("}\n\n");
-
-        // SliceHandle<T> - wrapper for mutable borrowed slices
-        output.push_str("/// <summary>\n");
-        output.push_str("/// Mutable view into a borrowed Rust slice.\n");
-        output.push_str("/// </summary>\n");
-        output.push_str("public readonly ref struct SliceHandle<T> where T : unmanaged\n");
-        output.push_str("{\n");
-        output.push_str("    private readonly FFISliceRaw _raw;\n\n");
-        output.push_str("    internal SliceHandle(FFISliceRaw raw) => _raw = raw;\n\n");
-        output.push_str("    public int Length => (int)_raw.Len;\n\n");
-        output.push_str("    public unsafe Span<T> AsSpan()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
-        output.push_str("            return Span<T>.Empty;\n");
-        output.push_str("        return new Span<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
-        output.push_str("    }\n");
-        output.push_str("}\n\n");
-
-        // OwnedSliceHandle<T> - IDisposable wrapper for owned slices
-        output.push_str("/// <summary>\n");
-        output.push_str("/// Owned array transferred from Rust.\n");
-        output
-            .push_str("/// Implements IDisposable to ensure proper cleanup of native resources.\n");
-        output.push_str("/// </summary>\n");
-        output.push_str(
-            "public sealed class OwnedSliceHandle<T> : IDisposable where T : unmanaged\n",
-        );
-        output.push_str("{\n");
-        output.push_str("    private OwnedSliceRawHandle _raw;\n");
-        output.push_str("    private bool _disposed;\n\n");
-
-        output.push_str("    internal OwnedSliceHandle(OwnedSliceRawHandle raw) => _raw = raw;\n");
-        output.push_str("    internal OwnedSliceRawHandle Raw => _raw;\n\n");
-
-        output.push_str("    public int Length => (int)_raw.Len;\n\n");
-
-        output.push_str("    public unsafe ReadOnlySpan<T> AsSpan()\n");
-        output.push_str("    {\n");
-        output.push_str(
-            "        if (_disposed) throw new ObjectDisposedException(nameof(OwnedSliceHandle<T>));\n",
-        );
-        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
-        output.push_str("            return ReadOnlySpan<T>.Empty;\n");
-        output.push_str("        return new ReadOnlySpan<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
-        output.push_str("    }\n\n");
-
-        output.push_str("    public T this[int index]\n");
-        output.push_str("    {\n");
-        output.push_str("        get\n");
-        output.push_str("        {\n");
-        output.push_str("            if (_disposed) throw new ObjectDisposedException(nameof(OwnedSliceHandle<T>));\n");
-        output.push_str("            if (index < 0 || index >= (int)_raw.Len)\n");
-        output.push_str("                throw new IndexOutOfRangeException();\n");
-        output.push_str("            unsafe { return ((T*)_raw.Ptr)[index]; }\n");
-        output.push_str("        }\n");
-        output.push_str("    }\n\n");
-
-        output.push_str("    public void Dispose()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_disposed) return;\n");
-        output.push_str("        _disposed = true;\n\n");
-        output.push_str("        if (_raw.Ptr != IntPtr.Zero)\n");
-        output.push_str("        {\n");
-        output.push_str("            Bindings.DropOwnedSlice(_raw);\n");
-        output.push_str("            _raw.Ptr = IntPtr.Zero;\n");
-        output.push_str("        }\n");
-        output.push_str("    }\n");
-        output.push_str("}\n");
-
-        output
-    }
-
     /// Generate an empty marker struct for heap-only types
     fn generate_marker_struct(&self, type_info: &TypeInfo) -> String {
         let mut output = String::new();
@@ -481,18 +568,22 @@ impl CSharpGenerator {
             .unwrap_or_else(|| type_info.name().to_string())
     }
 
-    fn generate_struct(&self, type_info: &TypeInfo) -> String {
+    fn generate_struct(
+        &self,
+        type_info: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
         let mut output = String::new();
 
         output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
         output.push_str(&format!(
             "public struct {}\n",
-            self.rust_type_to_csharp_name(type_info)
+            self.rust_type_to_csharp_name(type_info, type_id_map)
         ));
         output.push_str("{\n");
 
         for field in type_info.fields() {
-            let csharp_type = self.rust_type_to_csharp_type(field.ty());
+            let csharp_type = self.rust_type_to_csharp_type(field.ty(), type_id_map);
             let field_name = self.to_pascal_case(field.name());
             output.push_str(&format!("    public {csharp_type} {field_name};\n"));
         }
@@ -501,17 +592,22 @@ impl CSharpGenerator {
         output
     }
 
-    fn generate_async_function_binding(&self, function: &FunctionInfo) -> String {
+    fn generate_async_function_binding(
+        &self,
+        function: &FunctionInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
         let mut output = String::new();
         let function_name = self.to_pascal_case(function.name());
-        let raw_return_type = self.rust_type_to_csharp_type(function.return_type());
-        let registrar_class = self.get_registrar_class_name(function.return_type());
+        let raw_return_type = self.rust_type_to_csharp_type(function.return_type(), type_id_map);
+        let registrar_class = self.get_registrar_class_name(function.return_type(), type_id_map);
         let return_repr = FFIRepr::from_type_info(function.return_type());
 
         // Determine the public return type (wrapped for owned types or owned slices)
         let public_return_type = match return_repr {
             FFIRepr::OwnedSlice => {
-                let element_type = self.get_generic_element_csharp_type(function.return_type());
+                let element_type =
+                    self.get_generic_element_csharp_type(function.return_type(), type_id_map);
                 format!("OwnedSliceHandle<{element_type}>")
             }
             FFIRepr::Owned => {
@@ -530,7 +626,7 @@ impl CSharpGenerator {
             .parameters()
             .iter()
             .map(|param| {
-                let param_type = self.rust_type_to_csharp_type(param.ty());
+                let param_type = self.rust_type_to_csharp_type(param.ty(), type_id_map);
                 let param_name = param.name().to_lowercase();
                 format!("{param_type} {param_name}")
             })
@@ -571,7 +667,8 @@ impl CSharpGenerator {
         // Return statement - wrap in OwnedSliceHandle for owned slices, OwnedHandle for owned types
         match return_repr {
             FFIRepr::OwnedSlice => {
-                let element_type = self.get_generic_element_csharp_type(function.return_type());
+                let element_type =
+                    self.get_generic_element_csharp_type(function.return_type(), type_id_map);
                 output.push_str(&format!(
                     "        return new OwnedSliceHandle<{element_type}>(await tcs.Task);\n"
                 ));
@@ -610,7 +707,11 @@ impl CSharpGenerator {
         output
     }
 
-    fn generate_sync_function_binding(&self, function: &FunctionInfo) -> String {
+    fn generate_sync_function_binding(
+        &self,
+        function: &FunctionInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
         let mut output = String::new();
         let function_name = self.to_pascal_case(function.name());
         let return_repr = FFIRepr::from_type_info(function.return_type());
@@ -628,7 +729,7 @@ impl CSharpGenerator {
             .parameters()
             .iter()
             .map(|param| {
-                let param_type = self.rust_type_to_csharp_type(param.ty());
+                let param_type = self.rust_type_to_csharp_type(param.ty(), type_id_map);
                 let param_name = param.name().to_lowercase();
                 format!("{param_type} {param_name}")
             })
@@ -646,11 +747,12 @@ impl CSharpGenerator {
                         format!("OwnedHandle<{marker_type}> {param_name}")
                     }
                     FFIRepr::SliceCallback => {
-                        let element_type = self.get_generic_element_csharp_type(param.ty());
+                        let element_type =
+                            self.get_generic_element_csharp_type(param.ty(), type_id_map);
                         format!("Action<ReadOnlySpan<{element_type}>> {param_name}")
                     }
                     _ => {
-                        let param_type = self.rust_type_to_csharp_type(param.ty());
+                        let param_type = self.rust_type_to_csharp_type(param.ty(), type_id_map);
                         format!("{param_type} {param_name}")
                     }
                 }
@@ -668,7 +770,8 @@ impl CSharpGenerator {
                 self.library_name, function.name()
             ));
 
-            let raw_return_type = self.rust_type_to_csharp_type(function.return_type());
+            let raw_return_type =
+                self.rust_type_to_csharp_type(function.return_type(), type_id_map);
             output.push_str(&format!(
                 "    private static extern {raw_return_type} {function_name}Internal({});\n\n",
                 raw_params.join(", ")
@@ -677,14 +780,15 @@ impl CSharpGenerator {
             // Public typed wrapper
             let public_return_type = match return_repr {
                 FFIRepr::OwnedSlice => {
-                    let element_type = self.get_generic_element_csharp_type(function.return_type());
+                    let element_type =
+                        self.get_generic_element_csharp_type(function.return_type(), type_id_map);
                     format!("OwnedSliceHandle<{element_type}>")
                 }
                 FFIRepr::Owned => {
                     let marker_type = self.get_inner_type_name(function.return_type());
                     format!("OwnedHandle<{marker_type}>")
                 }
-                _ => self.rust_type_to_csharp_type(function.return_type()),
+                _ => self.rust_type_to_csharp_type(function.return_type(), type_id_map),
             };
 
             output.push_str(&format!(
@@ -697,7 +801,8 @@ impl CSharpGenerator {
             for param in function.parameters() {
                 if FFIRepr::from_type_info(param.ty()) == FFIRepr::SliceCallback {
                     let param_name = param.name().to_lowercase();
-                    let element_type = self.get_generic_element_csharp_type(param.ty());
+                    let element_type =
+                        self.get_generic_element_csharp_type(param.ty(), type_id_map);
                     let registrar = format!("SliceCallbackRegistrar_{element_type}");
                     output.push_str(&format!(
                         "        var {param_name}_id = {registrar}.Instance.Register({param_name});\n"
@@ -724,7 +829,8 @@ impl CSharpGenerator {
 
             match return_repr {
                 FFIRepr::OwnedSlice => {
-                    let element_type = self.get_generic_element_csharp_type(function.return_type());
+                    let element_type =
+                        self.get_generic_element_csharp_type(function.return_type(), type_id_map);
                     output.push_str(&format!(
                         "        return new OwnedSliceHandle<{element_type}>({function_name}Internal({}));\n",
                         call_args.join(", ")
@@ -738,7 +844,8 @@ impl CSharpGenerator {
                     ));
                 }
                 _ => {
-                    let return_type = self.rust_type_to_csharp_type(function.return_type());
+                    let return_type =
+                        self.rust_type_to_csharp_type(function.return_type(), type_id_map);
                     if return_type == "void" {
                         output.push_str(&format!(
                             "        {function_name}Internal({});\n",
@@ -755,7 +862,7 @@ impl CSharpGenerator {
             output.push_str("    }\n");
         } else {
             // Standard sync function binding (no special types)
-            let return_type = self.rust_type_to_csharp_type(function.return_type());
+            let return_type = self.rust_type_to_csharp_type(function.return_type(), type_id_map);
 
             output.push_str(&format!(
                 "    [DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]\n",
@@ -771,17 +878,37 @@ impl CSharpGenerator {
         output
     }
 
-    fn get_registrar_class_name(&self, return_type: &TypeInfo) -> String {
-        let type_name = self.rust_type_to_csharp_name(return_type);
+    fn get_registrar_class_name(
+        &self,
+        return_type: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
+        let type_name = self.rust_type_to_csharp_name(return_type, type_id_map);
         format!("Registrar_{type_name}")
     }
 
-    fn rust_type_to_csharp_type(&self, rust_type: &TypeInfo) -> String {
+    fn rust_type_to_csharp_type(
+        &self,
+        rust_type: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
         // Check FFI representation from metadata first
+        // Look up raw type name via raw_type_id
         match FFIRepr::from_type_info(rust_type) {
-            FFIRepr::Owned => return "OwnedRawHandle".to_string(),
-            FFIRepr::OwnedSlice => return "OwnedSliceRawHandle".to_string(),
-            FFIRepr::Slice | FFIRepr::SliceMut => return "FFISliceRaw".to_string(),
+            FFIRepr::Owned | FFIRepr::OwnedSlice | FFIRepr::Slice | FFIRepr::SliceMut => {
+                if let Some(raw_type_id) = rust_type.get_metadata(META_RAW_TYPE_ID) {
+                    if let Some(raw_type) = type_id_map.get(raw_type_id) {
+                        return raw_type.name().to_string();
+                    }
+                }
+                // Fallback for backward compatibility
+                match FFIRepr::from_type_info(rust_type) {
+                    FFIRepr::Owned => return "OwnedRawHandle".to_string(),
+                    FFIRepr::OwnedSlice => return "OwnedSliceRawHandle".to_string(),
+                    FFIRepr::Slice | FFIRepr::SliceMut => return "FFISliceRaw".to_string(),
+                    _ => unreachable!(),
+                }
+            }
             FFIRepr::SliceCallback => return "SliceCallbackRaw".to_string(),
             FFIRepr::Direct => {}
         }
@@ -806,16 +933,24 @@ impl CSharpGenerator {
     }
 
     /// Get the C# type name for the element type of a generic wrapper (from generic_params)
-    fn get_generic_element_csharp_type(&self, type_info: &TypeInfo) -> String {
+    fn get_generic_element_csharp_type(
+        &self,
+        type_info: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
         type_info
             .generic_params()
             .first()
-            .map(|inner| self.rust_type_to_csharp_type(inner))
+            .map(|inner| self.rust_type_to_csharp_type(inner, type_id_map))
             .unwrap_or_else(|| "object".to_string())
     }
 
-    fn rust_type_to_csharp_name(&self, rust_type: &TypeInfo) -> String {
-        self.rust_type_to_csharp_type(rust_type)
+    fn rust_type_to_csharp_name(
+        &self,
+        rust_type: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
+        self.rust_type_to_csharp_type(rust_type, type_id_map)
     }
 
     fn to_pascal_case(&self, snake_case: &str) -> String {
@@ -841,7 +976,8 @@ mod tests {
     fn test_generate_registrar_class() {
         let generator = CSharpGenerator::default();
         let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
-        let registrar = generator.generate_registrar_class(&return_type);
+        let type_id_map = HashMap::new();
+        let registrar = generator.generate_registrar_class(&return_type, &type_id_map);
 
         assert!(registrar.contains("class Registrar_ulong"));
         assert!(registrar.contains("Action<ulong>"));
@@ -855,8 +991,9 @@ mod tests {
         let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, vec![], &[]);
         let param = FunctionParameter::new("value", param_type);
         let function = FunctionInfo::new("test_func", vec![param], return_type, false);
+        let type_id_map = HashMap::new();
 
-        let binding = generator.generate_sync_function_binding(&function);
+        let binding = generator.generate_sync_function_binding(&function, &type_id_map);
 
         assert!(binding.contains("[DllImport(\"rust_lib.dll\""));
         assert!(binding.contains("public static extern ulong TestFunc(uint value)"));
@@ -869,8 +1006,9 @@ mod tests {
         let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, vec![], &[]);
         let param = FunctionParameter::new("value", param_type);
         let function = FunctionInfo::new("test_async_func", vec![param], return_type, true);
+        let type_id_map = HashMap::new();
 
-        let binding = generator.generate_async_function_binding(&function);
+        let binding = generator.generate_async_function_binding(&function, &type_id_map);
 
         assert!(binding.contains("public static async Task<ulong> TestAsyncFunc(uint value)"));
         assert!(binding.contains("TaskCompletionSource<ulong>"));
