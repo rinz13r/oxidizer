@@ -38,10 +38,8 @@ pub use oxidizer_core::registry::Registry;
 
 // Re-export FFI utilities
 pub use oxidizer_utils::{
+    FFISlice, FFISliceMut, FFISliceRaw, Owned, OwnedRaw, OwnedSlice, OwnedSliceRaw, SliceCallback,
     get_utils_registry,
-    HeapAllocated, HeapAllocatedRaw,
-    FFISlice, FFISliceMut, FFISliceRaw,
-    OwnedSlice, OwnedSliceRaw,
 };
 
 // Conditionally re-export csgen (for build-time code generation)
@@ -59,10 +57,13 @@ pub mod csgen {
 /// Use `use oxidizer::prelude::*;` to import commonly used items:
 /// - `ffi_function` - Attribute macro for FFI functions
 /// - `ffi_type` - Attribute macro for FFI types
-/// - `HeapAllocated` - Wrapper for heap-allocated FFI values
+/// - `Owned` - Wrapper for owned FFI values
 /// - `FFISlice` - Borrowed immutable slice for FFI
 /// - `FFISliceMut` - Borrowed mutable slice for FFI
 /// - `OwnedSlice` - Owned Vec transfer across FFI
+/// - `SliceCallback` - Callback for scoped slice access
 pub mod prelude {
-    pub use crate::{ffi_function, ffi_type, HeapAllocated, FFISlice, FFISliceMut, OwnedSlice};
+    pub use crate::{
+        FFISlice, FFISliceMut, Owned, OwnedSlice, SliceCallback, ffi_function, ffi_type,
+    };
 }

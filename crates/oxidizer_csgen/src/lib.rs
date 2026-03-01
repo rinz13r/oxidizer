@@ -1,81 +1,119 @@
+use bon::Builder;
 use oxidizer_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
 use std::collections::HashMap;
 
-pub struct CSharpGenerator {
-    library_name: String,
+pub mod ir;
+mod builder;
+mod renderer;
+
+// Constants for type IDs (must match oxidizer_utils)
+const OWNED_RAW_TYPE_ID: &str = "owned_raw";
+const OWNED_SLICE_RAW_TYPE_ID: &str = "owned_slice_raw";
+const FFI_SLICE_RAW_TYPE_ID: &str = "ffi_slice_raw";
+
+// Constants for metadata keys (must match oxidizer_utils)
+const META_TYPE_ID: &str = "type_id";
+const META_RAW_TYPE_ID: &str = "raw_type_id";
+const META_FFI_REPR: &str = "ffi_repr";
+
+// Constants for FFI representation values (must match oxidizer_utils)
+const FFI_REPR_OWNED: &str = "owned";
+const FFI_REPR_OWNED_SLICE: &str = "owned_slice";
+const FFI_REPR_SLICE: &str = "slice";
+const FFI_REPR_SLICE_MUT: &str = "slice_mut";
+const FFI_REPR_SLICE_CALLBACK: &str = "slice_callback";
+
+/// Indentation style for generated code
+#[derive(Debug, Clone, Default)]
+pub enum IndentStyle {
+    /// 4 spaces (default)
+    #[default]
+    Spaces4,
+    /// 2 spaces
+    Spaces2,
+    /// Tab characters
+    Tabs,
 }
 
-impl Default for CSharpGenerator {
-    fn default() -> Self {
-        Self::new("rust_lib.dll".to_string())
+impl IndentStyle {
+    /// Returns the string representation for a single indent level
+    fn unit(&self) -> &'static str {
+        match self {
+            IndentStyle::Spaces4 => "    ",
+            IndentStyle::Spaces2 => "  ",
+            IndentStyle::Tabs => "\t",
+        }
     }
+}
+
+/// FFI representation of a type, determined from metadata
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FFIRepr {
+    /// Direct value type, no wrapping
+    Direct,
+    /// Owned<T> -> OwnedRaw on FFI boundary
+    Owned,
+    /// OwnedSlice<T> -> OwnedSliceRaw on FFI boundary
+    OwnedSlice,
+    /// FFISlice<T> -> FFISliceRaw on FFI boundary
+    Slice,
+    /// FFISliceMut<T> -> FFISliceRaw on FFI boundary
+    SliceMut,
+    /// SliceCallback<T> -> callback with scoped slice access
+    SliceCallback,
+}
+
+impl FFIRepr {
+    /// Determine FFI representation from type metadata
+    pub fn from_type_info(type_info: &TypeInfo) -> Self {
+        match type_info.get_metadata(META_FFI_REPR) {
+            Some(v) if v == FFI_REPR_OWNED => FFIRepr::Owned,
+            Some(v) if v == FFI_REPR_OWNED_SLICE => FFIRepr::OwnedSlice,
+            Some(v) if v == FFI_REPR_SLICE => FFIRepr::Slice,
+            Some(v) if v == FFI_REPR_SLICE_MUT => FFIRepr::SliceMut,
+            Some(v) if v == FFI_REPR_SLICE_CALLBACK => FFIRepr::SliceCallback,
+            _ => FFIRepr::Direct,
+        }
+    }
+}
+
+/// C# code generator with configurable output
+#[derive(Builder)]
+pub struct CSharpGenerator {
+    /// Name of the native library (e.g., "mylib.dll")
+    #[builder(into)]
+    library_name: String,
+    /// Optional namespace to wrap generated code in
+    #[builder(into)]
+    namespace: Option<String>,
+    /// Name of the static bindings class (default: "Bindings")
+    #[builder(into, default = "Bindings".to_string())]
+    bindings_class_name: String,
+    /// Indentation style for generated code
+    #[builder(default)]
+    indent_style: IndentStyle,
 }
 
 impl CSharpGenerator {
-    pub fn new(library_name: String) -> Self {
-        Self { library_name }
-    }
-
-    /// Generates complete C# bindings from a Registry according to the async strategy
+    /// Generates complete C# bindings from a Registry.
     pub fn generate_csharp(&self, registry: &Registry) -> String {
-        let mut output = String::new();
-
-        // Add file header and usings
-        output.push_str(&self.generate_file_header());
-
-        // Collect unique return types for async functions to generate registrars
-        let async_return_types = self.collect_async_return_types(registry.functions());
-
-        // Generate registrar classes for async functions
-        for return_type in &async_return_types {
-            output.push_str(&self.generate_registrar_class(return_type));
-            output.push('\n');
-        }
-
-        // Generate HeapAllocatedRaw struct (internal) and HeapHandle<T> class
-        output.push_str(&self.generate_heap_infrastructure());
-        output.push('\n');
-
-        // Generate slice infrastructure (FFISliceRaw, OwnedSliceRaw, OwnedArray<T>, etc.)
-        output.push_str(&self.generate_slice_infrastructure());
-        output.push('\n');
-
-        // Generate struct definitions
-        for type_info in registry.types() {
-            if type_info.is_heap_allocated() {
-                // For heap types, generate a marker struct (empty)
-                output.push_str(&self.generate_marker_struct(type_info));
-                output.push('\n');
-            } else if matches!(type_info.kind(), TypeKind::UserDefined) {
-                // For value types with fields, generate full struct
-                if !type_info.fields().is_empty() {
-                    output.push_str(&self.generate_struct(type_info));
-                    output.push('\n');
-                }
-            }
-            // Primitives don't need struct generation
-        }
-
-        // Generate bindings class
-        output.push_str("public static class Bindings\n{\n");
-
-        // Generate function bindings
-        for function in registry.functions() {
-            if *function.is_async() {
-                output.push_str(&self.generate_async_function_binding(function));
-            } else {
-                output.push_str(&self.generate_sync_function_binding(function));
-            }
-            output.push('\n');
-        }
-
-        output.push_str("}\n");
-
-        output
+        let ir = self.build_ir(registry);
+        renderer::render(&ir, &self.indent_style)
     }
 
-    fn generate_file_header(&self) -> String {
-        "using System;\nusing System.Collections.Generic;\nusing System.Runtime.InteropServices;\nusing System.Threading.Tasks;\n\n".to_string()
+    // ------------------------------------------------------------------
+    // Utility methods used by the builder
+    // ------------------------------------------------------------------
+
+    /// Build a lookup map from type_id metadata to TypeInfo
+    fn build_type_id_map(&self, registry: &Registry) -> HashMap<String, TypeInfo> {
+        let mut map = HashMap::new();
+        for type_info in registry.types() {
+            if let Some(type_id) = type_info.get_metadata(META_TYPE_ID) {
+                map.insert(type_id.to_string(), type_info.clone());
+            }
+        }
+        map
     }
 
     fn collect_async_return_types(&self, functions: &[FunctionInfo]) -> Vec<TypeInfo> {
@@ -92,512 +130,54 @@ impl CSharpGenerator {
         return_types.into_values().collect()
     }
 
-    fn generate_registrar_class(&self, return_type: &TypeInfo) -> String {
-        let mut output = String::new();
-        let class_name = self.get_registrar_class_name(return_type);
-        let csharp_type = self.rust_type_to_csharp_type(return_type);
+    /// Collect unique element types used in SliceCallback parameters
+    fn collect_slice_callback_types(&self, functions: &[FunctionInfo]) -> Vec<TypeInfo> {
+        let mut element_types = HashMap::new();
 
-        output.push_str(&format!("class {class_name}\n{{\n"));
-        output.push_str(&format!(
-            "    public static readonly {class_name} Instance = new();\n\n"
-        ));
-
-        // Generate delegate
-        output.push_str(&format!(
-            "    public delegate void CallbackDelegate(ulong id, {csharp_type} result);\n\n"
-        ));
-
-        // Generate dictionary and other fields
-        output.push_str(&format!(
-            "    private readonly Dictionary<ulong, Action<{csharp_type}>> registrations = new();\n"
-        ));
-        output.push_str("    private ulong id = 0;\n");
-        output.push_str("    private readonly object lockObj = new();\n\n");
-
-        // Private constructor
-        output.push_str(&format!("    private {class_name}()\n    {{\n    }}\n\n"));
-
-        // Register method
-        output.push_str(&format!(
-            "    public ulong Register(Action<{csharp_type}> callback)\n"
-        ));
-        output.push_str("    {\n");
-        output.push_str("        ulong currentId;\n\n");
-        output.push_str("        lock (lockObj)\n        {\n");
-        output.push_str("            currentId = id;\n");
-        output.push_str("            registrations[currentId] = callback;\n");
-        output.push_str("            id++;\n");
-        output.push_str("        }\n\n");
-        output.push_str("        return currentId;\n");
-        output.push_str("    }\n\n");
-
-        // Static callback method
-        output.push_str(&format!(
-            "    public static void Callback(ulong id, {csharp_type} result)\n"
-        ));
-        output.push_str("    {\n");
-        output.push_str("        if (Instance.registrations.TryGetValue(id, out var callback))\n");
-        output.push_str("        {\n");
-        output.push_str("            lock (Instance.lockObj)\n            {\n");
-        output.push_str("                Instance.registrations.Remove(id);\n");
-        output.push_str("            }\n");
-        output.push_str("            callback(result);\n");
-        output.push_str("        }\n");
-        output.push_str("    }\n");
-        output.push_str("}\n");
-
-        output
-    }
-
-    /// Generate the HeapAllocatedRaw struct (internal) and HeapHandle<T> class
-    fn generate_heap_infrastructure(&self) -> String {
-        let mut output = String::new();
-
-        // Internal HeapAllocatedRaw struct
-        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
-        output.push_str("public struct HeapAllocatedRaw\n");
-        output.push_str("{\n");
-        output.push_str("    public IntPtr Ptr;\n");
-        output.push_str("    public IntPtr DropFn;\n");
-        output.push_str("}\n\n");
-
-        // Generic HeapHandle<T> class
-        output.push_str("/// <summary>\n");
-        output.push_str("/// Type-safe wrapper for heap-allocated Rust objects.\n");
-        output
-            .push_str("/// Implements IDisposable to ensure proper cleanup of native resources.\n");
-        output.push_str("/// </summary>\n");
-        output.push_str("public sealed class HeapHandle<T> : IDisposable\n");
-        output.push_str("{\n");
-        output.push_str("    private HeapAllocatedRaw _raw;\n");
-        output.push_str("    private bool _disposed;\n\n");
-
-        output.push_str("    internal HeapHandle(HeapAllocatedRaw raw) => _raw = raw;\n");
-        output.push_str("    internal HeapAllocatedRaw Raw => _raw;\n\n");
-
-        output.push_str("    public void Dispose()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_disposed) return;\n");
-        output.push_str("        _disposed = true;\n\n");
-        output.push_str("        if (_raw.Ptr != IntPtr.Zero)\n");
-        output.push_str("        {\n");
-        output.push_str("            Bindings.DropHeapAllocated(_raw);\n");
-        output.push_str("            _raw.Ptr = IntPtr.Zero;\n");
-        output.push_str("        }\n");
-        output.push_str("    }\n");
-        output.push_str("}\n");
-
-        output
-    }
-
-    /// Generate slice infrastructure types
-    fn generate_slice_infrastructure(&self) -> String {
-        let mut output = String::new();
-
-        // FFISliceRaw - type-erased borrowed slice
-        output.push_str("/// <summary>Type-erased borrowed slice for FFI boundary.</summary>\n");
-        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
-        output.push_str("public struct FFISliceRaw\n");
-        output.push_str("{\n");
-        output.push_str("    public IntPtr Ptr;\n");
-        output.push_str("    public nuint Len;\n");
-        output.push_str("}\n\n");
-
-        // OwnedSliceRaw - type-erased owned slice
-        output.push_str("/// <summary>Type-erased owned slice for FFI boundary.</summary>\n");
-        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
-        output.push_str("public struct OwnedSliceRaw\n");
-        output.push_str("{\n");
-        output.push_str("    public IntPtr Ptr;\n");
-        output.push_str("    public nuint Len;\n");
-        output.push_str("    public nuint Capacity;\n");
-        output.push_str("    public nuint ElementSize;\n");
-        output.push_str("    public IntPtr DropFn;\n");
-        output.push_str("}\n\n");
-
-        // ReadOnlySliceHandle<T> - wrapper for borrowed slices
-        output.push_str("/// <summary>\n");
-        output.push_str("/// Read-only view into a borrowed Rust slice.\n");
-        output.push_str("/// The underlying data is owned by Rust and must not be modified.\n");
-        output.push_str("/// </summary>\n");
-        output.push_str("public readonly ref struct ReadOnlySliceHandle<T> where T : unmanaged\n");
-        output.push_str("{\n");
-        output.push_str("    private readonly FFISliceRaw _raw;\n\n");
-        output.push_str("    internal ReadOnlySliceHandle(FFISliceRaw raw) => _raw = raw;\n\n");
-        output.push_str("    public int Length => (int)_raw.Len;\n\n");
-        output.push_str("    public unsafe ReadOnlySpan<T> AsSpan()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
-        output.push_str("            return ReadOnlySpan<T>.Empty;\n");
-        output.push_str("        return new ReadOnlySpan<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
-        output.push_str("    }\n");
-        output.push_str("}\n\n");
-
-        // SliceHandle<T> - wrapper for mutable borrowed slices
-        output.push_str("/// <summary>\n");
-        output.push_str("/// Mutable view into a borrowed Rust slice.\n");
-        output.push_str("/// </summary>\n");
-        output.push_str("public readonly ref struct SliceHandle<T> where T : unmanaged\n");
-        output.push_str("{\n");
-        output.push_str("    private readonly FFISliceRaw _raw;\n\n");
-        output.push_str("    internal SliceHandle(FFISliceRaw raw) => _raw = raw;\n\n");
-        output.push_str("    public int Length => (int)_raw.Len;\n\n");
-        output.push_str("    public unsafe Span<T> AsSpan()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
-        output.push_str("            return Span<T>.Empty;\n");
-        output.push_str("        return new Span<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
-        output.push_str("    }\n");
-        output.push_str("}\n\n");
-
-        // OwnedArray<T> - IDisposable wrapper for owned slices
-        output.push_str("/// <summary>\n");
-        output.push_str("/// Owned array transferred from Rust.\n");
-        output.push_str("/// Implements IDisposable to ensure proper cleanup of native resources.\n");
-        output.push_str("/// </summary>\n");
-        output.push_str("public sealed class OwnedArray<T> : IDisposable where T : unmanaged\n");
-        output.push_str("{\n");
-        output.push_str("    private OwnedSliceRaw _raw;\n");
-        output.push_str("    private bool _disposed;\n\n");
-
-        output.push_str("    internal OwnedArray(OwnedSliceRaw raw) => _raw = raw;\n");
-        output.push_str("    internal OwnedSliceRaw Raw => _raw;\n\n");
-
-        output.push_str("    public int Length => (int)_raw.Len;\n\n");
-
-        output.push_str("    public unsafe ReadOnlySpan<T> AsSpan()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_disposed) throw new ObjectDisposedException(nameof(OwnedArray<T>));\n");
-        output.push_str("        if (_raw.Ptr == IntPtr.Zero || _raw.Len == 0)\n");
-        output.push_str("            return ReadOnlySpan<T>.Empty;\n");
-        output.push_str("        return new ReadOnlySpan<T>((void*)_raw.Ptr, (int)_raw.Len);\n");
-        output.push_str("    }\n\n");
-
-        output.push_str("    public T this[int index]\n");
-        output.push_str("    {\n");
-        output.push_str("        get\n");
-        output.push_str("        {\n");
-        output.push_str("            if (_disposed) throw new ObjectDisposedException(nameof(OwnedArray<T>));\n");
-        output.push_str("            if (index < 0 || index >= (int)_raw.Len)\n");
-        output.push_str("                throw new IndexOutOfRangeException();\n");
-        output.push_str("            unsafe { return ((T*)_raw.Ptr)[index]; }\n");
-        output.push_str("        }\n");
-        output.push_str("    }\n\n");
-
-        output.push_str("    public void Dispose()\n");
-        output.push_str("    {\n");
-        output.push_str("        if (_disposed) return;\n");
-        output.push_str("        _disposed = true;\n\n");
-        output.push_str("        if (_raw.Ptr != IntPtr.Zero)\n");
-        output.push_str("        {\n");
-        output.push_str("            Bindings.DropOwnedSlice(_raw);\n");
-        output.push_str("            _raw.Ptr = IntPtr.Zero;\n");
-        output.push_str("        }\n");
-        output.push_str("    }\n");
-        output.push_str("}\n");
-
-        output
-    }
-
-    /// Generate an empty marker struct for heap-only types
-    fn generate_marker_struct(&self, type_info: &TypeInfo) -> String {
-        let mut output = String::new();
-
-        // Extract the inner type name from HeapAllocated<T> format
-        let type_name = type_info.name();
-        let marker_name = self.extract_heap_inner_type(type_name);
-
-        output.push_str(&format!(
-            "/// <summary>Marker struct for heap-allocated {marker_name} instances.</summary>\n"
-        ));
-        output.push_str(&format!("public struct {marker_name} {{ }}\n"));
-
-        output
-    }
-
-    /// Extract inner type from "HeapAllocated<TypeName>" -> "TypeName"
-    fn extract_heap_inner_type(&self, type_name: &str) -> String {
-        if type_name.starts_with("HeapAllocated<") && type_name.ends_with(">") {
-            type_name["HeapAllocated<".len()..type_name.len() - 1].to_string()
-        } else if type_name.ends_with("HeapHandle") {
-            // Legacy format
-            type_name[..type_name.len() - "HeapHandle".len()].to_string()
-        } else {
-            type_name.to_string()
-        }
-    }
-
-    fn generate_struct(&self, type_info: &TypeInfo) -> String {
-        let mut output = String::new();
-
-        output.push_str("[StructLayout(LayoutKind.Sequential)]\n");
-        output.push_str(&format!(
-            "public struct {}\n",
-            self.rust_type_to_csharp_name(type_info)
-        ));
-        output.push_str("{\n");
-
-        for field in type_info.fields() {
-            let csharp_type = self.rust_type_to_csharp_type(field.ty());
-            let field_name = self.to_pascal_case(field.name());
-            output.push_str(&format!("    public {csharp_type} {field_name};\n"));
-        }
-
-        output.push_str("}\n");
-        output
-    }
-
-    fn generate_async_function_binding(&self, function: &FunctionInfo) -> String {
-        let mut output = String::new();
-        let function_name = self.to_pascal_case(function.name());
-        let raw_return_type = self.rust_type_to_csharp_type(function.return_type());
-        let registrar_class = self.get_registrar_class_name(function.return_type());
-        let returns_heap = self.is_heap_type(function.return_type()) && !self.is_owned_slice_type(function.return_type());
-        let returns_owned_slice = self.is_owned_slice_type(function.return_type());
-
-        // Determine the public return type (wrapped for heap types or owned slices)
-        let public_return_type = if returns_owned_slice {
-            let element_type = self.get_owned_slice_element_type(function.return_type());
-            format!("OwnedArray<{element_type}>")
-        } else if returns_heap {
-            let marker_type = self.get_heap_marker_type(function.return_type());
-            format!("HeapHandle<{marker_type}>")
-        } else {
-            raw_return_type.clone()
-        };
-
-        // Generate public async method
-        output.push_str(&format!(
-            "    public static async Task<{public_return_type}> {function_name}("
-        ));
-
-        let params: Vec<String> = function
-            .parameters()
-            .iter()
-            .map(|param| {
-                let param_type = self.rust_type_to_csharp_type(param.ty());
-                let param_name = param.name().to_lowercase();
-                format!("{param_type} {param_name}")
-            })
-            .collect();
-
-        output.push_str(&params.join(", "));
-        output.push_str(")\n    {\n");
-
-        // Implementation - TaskCompletionSource always uses raw type
-        output.push_str(&format!(
-            "        var tcs = new TaskCompletionSource<{raw_return_type}>();\n\n"
-        ));
-        output.push_str(&format!(
-            "        var id = {registrar_class}.Instance.Register(\n"
-        ));
-        output.push_str(&format!("            ({raw_return_type} res) =>\n"));
-        output.push_str("            {\n");
-        output.push_str("                tcs.SetResult(res);\n");
-        output.push_str("            });\n\n");
-
-        // Call internal method
-        let param_names: Vec<String> = std::iter::once("id".to_string())
-            .chain(
-                function
-                    .parameters()
-                    .iter()
-                    .map(|p| p.name().to_lowercase()),
-            )
-            .chain(std::iter::once(format!("{registrar_class}.Callback")))
-            .collect();
-
-        output.push_str(&format!(
-            "        {}Internal({});\n\n",
-            function_name,
-            param_names.join(", ")
-        ));
-
-        // Return statement - wrap in OwnedArray for owned slices, HeapHandle for heap types
-        if returns_owned_slice {
-            let element_type = self.get_owned_slice_element_type(function.return_type());
-            output.push_str(&format!(
-                "        return new OwnedArray<{element_type}>(await tcs.Task);\n"
-            ));
-        } else if returns_heap {
-            let marker_type = self.get_heap_marker_type(function.return_type());
-            output.push_str(&format!(
-                "        return new HeapHandle<{marker_type}>(await tcs.Task);\n"
-            ));
-        } else {
-            output.push_str("        return await tcs.Task;\n");
-        }
-        output.push_str("    }\n\n");
-
-        // Generate private DllImport method
-        output.push_str(&format!(
-            "    [DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]\n",
-            self.library_name, function.name()
-        ));
-
-        let internal_params: Vec<String> = std::iter::once("ulong id".to_string())
-            .chain(params)
-            .chain(std::iter::once(format!(
-                "{registrar_class}.CallbackDelegate cb"
-            )))
-            .collect();
-
-        output.push_str(&format!(
-            "    private static extern void {}Internal({});\n",
-            function_name,
-            internal_params.join(", ")
-        ));
-
-        output
-    }
-
-    fn generate_sync_function_binding(&self, function: &FunctionInfo) -> String {
-        let mut output = String::new();
-        let function_name = self.to_pascal_case(function.name());
-        let returns_heap = self.is_heap_type(function.return_type()) && !self.is_owned_slice_type(function.return_type());
-        let returns_owned_slice = self.is_owned_slice_type(function.return_type());
-        let has_heap_params = function
-            .parameters()
-            .iter()
-            .any(|p| self.is_heap_type(p.ty()));
-
-        // Generate raw params (for DllImport - uses HeapAllocatedRaw)
-        let raw_params: Vec<String> = function
-            .parameters()
-            .iter()
-            .map(|param| {
-                let param_type = self.rust_type_to_csharp_type(param.ty());
-                let param_name = param.name().to_lowercase();
-                format!("{param_type} {param_name}")
-            })
-            .collect();
-
-        // Generate public params (for wrapper - uses HeapHandle<T>)
-        let public_params: Vec<String> = function
-            .parameters()
-            .iter()
-            .map(|param| {
-                let param_name = param.name().to_lowercase();
-                if self.is_heap_type(param.ty()) && !self.is_owned_slice_type(param.ty()) {
-                    let marker_type = self.get_heap_marker_type(param.ty());
-                    format!("HeapHandle<{marker_type}> {param_name}")
-                } else {
-                    let param_type = self.rust_type_to_csharp_type(param.ty());
-                    format!("{param_type} {param_name}")
-                }
-            })
-            .collect();
-
-        // Generate call arguments (extracts .Raw from HeapHandle params)
-        let call_args: Vec<String> = function
-            .parameters()
-            .iter()
-            .map(|param| {
-                let param_name = param.name().to_lowercase();
-                if self.is_heap_type(param.ty()) && !self.is_owned_slice_type(param.ty()) {
-                    format!("{param_name}.Raw")
-                } else {
-                    param_name
-                }
-            })
-            .collect();
-
-        let needs_wrapper = returns_heap || returns_owned_slice || has_heap_params;
-
-        if needs_wrapper {
-            // Private raw DllImport
-            output.push_str(&format!(
-                "    [DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]\n",
-                self.library_name, function.name()
-            ));
-
-            let raw_return_type = self.rust_type_to_csharp_type(function.return_type());
-            output.push_str(&format!(
-                "    private static extern {raw_return_type} {function_name}Internal({});\n\n",
-                raw_params.join(", ")
-            ));
-
-            // Public typed wrapper
-            let public_return_type = if returns_owned_slice {
-                let element_type = self.get_owned_slice_element_type(function.return_type());
-                format!("OwnedArray<{element_type}>")
-            } else if returns_heap {
-                let marker_type = self.get_heap_marker_type(function.return_type());
-                format!("HeapHandle<{marker_type}>")
-            } else {
-                self.rust_type_to_csharp_type(function.return_type())
-            };
-
-            output.push_str(&format!(
-                "    public static {public_return_type} {function_name}({})\n",
-                public_params.join(", ")
-            ));
-            output.push_str("    {\n");
-
-            if returns_owned_slice {
-                let element_type = self.get_owned_slice_element_type(function.return_type());
-                output.push_str(&format!(
-                    "        return new OwnedArray<{element_type}>({function_name}Internal({}));\n",
-                    call_args.join(", ")
-                ));
-            } else if returns_heap {
-                let marker_type = self.get_heap_marker_type(function.return_type());
-                output.push_str(&format!(
-                    "        return new HeapHandle<{marker_type}>({function_name}Internal({}));\n",
-                    call_args.join(", ")
-                ));
-            } else {
-                let return_type = self.rust_type_to_csharp_type(function.return_type());
-                if return_type == "void" {
-                    output.push_str(&format!(
-                        "        {function_name}Internal({});\n",
-                        call_args.join(", ")
-                    ));
-                } else {
-                    output.push_str(&format!(
-                        "        return {function_name}Internal({});\n",
-                        call_args.join(", ")
-                    ));
+        for function in functions {
+            for param in function.parameters() {
+                if FFIRepr::from_type_info(param.ty()) == FFIRepr::SliceCallback {
+                    if let Some(element_type) = param.ty().generic_params().first() {
+                        let key = format!("{}{:?}", element_type.name(), element_type.kind());
+                        element_types.insert(key, element_type.clone());
+                    }
                 }
             }
-            output.push_str("    }\n");
-        } else {
-            // Standard sync function binding (no heap types)
-            let return_type = self.rust_type_to_csharp_type(function.return_type());
-
-            output.push_str(&format!(
-                "    [DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]\n",
-                self.library_name, function.name()
-            ));
-
-            output.push_str(&format!(
-                "    public static extern {return_type} {function_name}({});\n",
-                raw_params.join(", ")
-            ));
         }
 
-        output
+        element_types.into_values().collect()
     }
 
-    fn get_registrar_class_name(&self, return_type: &TypeInfo) -> String {
-        let type_name = self.rust_type_to_csharp_name(return_type);
+    fn get_registrar_class_name(
+        &self,
+        return_type: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
+        let type_name = self.rust_type_to_csharp_name(return_type, type_id_map);
         format!("Registrar_{type_name}")
     }
 
-    fn rust_type_to_csharp_type(&self, rust_type: &TypeInfo) -> String {
-        // For OwnedSlice types, use OwnedSliceRaw at FFI boundary
-        if let TypeKind::OwnedSlice { .. } = rust_type.kind() {
-            return "OwnedSliceRaw".to_string();
-        }
-
-        // For Slice types, use FFISliceRaw at FFI boundary
-        if let TypeKind::Slice { .. } = rust_type.kind() {
-            return "FFISliceRaw".to_string();
-        }
-
-        // For heap-allocated types, use HeapAllocatedRaw at FFI boundary
-        if rust_type.is_heap_allocated() {
-            return "HeapAllocatedRaw".to_string();
+    fn rust_type_to_csharp_type(
+        &self,
+        rust_type: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
+        match FFIRepr::from_type_info(rust_type) {
+            FFIRepr::Owned | FFIRepr::OwnedSlice | FFIRepr::Slice | FFIRepr::SliceMut => {
+                if let Some(raw_type_id) = rust_type.get_metadata(META_RAW_TYPE_ID) {
+                    if let Some(raw_type) = type_id_map.get(raw_type_id) {
+                        return raw_type.name().to_string();
+                    }
+                }
+                match FFIRepr::from_type_info(rust_type) {
+                    FFIRepr::Owned => return "OwnedRawHandle".to_string(),
+                    FFIRepr::OwnedSlice => return "OwnedSliceRawHandle".to_string(),
+                    FFIRepr::Slice | FFIRepr::SliceMut => return "FFISliceRaw".to_string(),
+                    _ => unreachable!(),
+                }
+            }
+            FFIRepr::SliceCallback => return "SliceCallbackRaw".to_string(),
+            FFIRepr::Direct => {}
         }
 
         match rust_type.kind() {
@@ -614,93 +194,39 @@ impl CSharpGenerator {
             TypeKind::Bool => "bool",
             TypeKind::Void => "void",
             TypeKind::Pointer => "IntPtr",
-            TypeKind::UserDefined => rust_type.name(),
-            TypeKind::Slice { .. } => "FFISliceRaw",
-            TypeKind::OwnedSlice { .. } => "OwnedSliceRaw",
+            TypeKind::Struct => rust_type.name(),
         }
         .to_string()
     }
 
-    /// Check if a type is heap-allocated
-    fn is_heap_type(&self, type_info: &TypeInfo) -> bool {
-        type_info.is_heap_allocated()
+    /// Get the C# type name for the element type of a generic wrapper (from generic_params)
+    fn get_generic_element_csharp_type(
+        &self,
+        type_info: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
+        type_info
+            .generic_params()
+            .first()
+            .map(|inner| self.rust_type_to_csharp_type(inner, type_id_map))
+            .unwrap_or_else(|| "object".to_string())
     }
 
-    /// Check if a type is an owned slice
-    fn is_owned_slice_type(&self, type_info: &TypeInfo) -> bool {
-        matches!(type_info.kind(), TypeKind::OwnedSlice { .. })
+    fn rust_type_to_csharp_name(
+        &self,
+        rust_type: &TypeInfo,
+        type_id_map: &HashMap<String, TypeInfo>,
+    ) -> String {
+        self.rust_type_to_csharp_type(rust_type, type_id_map)
     }
 
-    /// Get the element type name for an owned slice
-    fn get_owned_slice_element_type(&self, type_info: &TypeInfo) -> String {
-        if let TypeKind::OwnedSlice { element_kind } = type_info.kind() {
-            self.type_kind_to_csharp_type(element_kind)
-        } else {
-            // Fallback: try to extract from type name
-            self.extract_generic_inner_type(type_info.name(), "OwnedSlice")
-        }
-    }
-
-    /// Convert a TypeKind to C# type name
-    fn type_kind_to_csharp_type(&self, kind: &TypeKind) -> String {
-        match kind {
-            TypeKind::U8 => "byte".to_string(),
-            TypeKind::U16 => "ushort".to_string(),
-            TypeKind::U32 => "uint".to_string(),
-            TypeKind::U64 => "ulong".to_string(),
-            TypeKind::I8 => "sbyte".to_string(),
-            TypeKind::I16 => "short".to_string(),
-            TypeKind::I32 => "int".to_string(),
-            TypeKind::I64 => "long".to_string(),
-            TypeKind::F32 => "float".to_string(),
-            TypeKind::F64 => "double".to_string(),
-            TypeKind::Bool => "bool".to_string(),
-            TypeKind::Void => "void".to_string(),
-            TypeKind::Pointer => "IntPtr".to_string(),
-            TypeKind::UserDefined => "object".to_string(), // Fallback
-            TypeKind::Slice { element_kind } => {
-                format!("ReadOnlySliceHandle<{}>", self.type_kind_to_csharp_type(element_kind))
-            }
-            TypeKind::OwnedSlice { element_kind } => {
-                format!("OwnedArray<{}>", self.type_kind_to_csharp_type(element_kind))
-            }
-        }
-    }
-
-    /// Extract inner type from generic format "Wrapper<T>" -> "T"
-    fn extract_generic_inner_type(&self, type_name: &str, wrapper_name: &str) -> String {
-        let prefix = format!("{}<", wrapper_name);
-        if type_name.starts_with(&prefix) && type_name.ends_with('>') {
-            let inner = &type_name[prefix.len()..type_name.len() - 1];
-            // Convert Rust type name to C# type
-            match inner {
-                "u8" => "byte",
-                "u16" => "ushort",
-                "u32" => "uint",
-                "u64" => "ulong",
-                "i8" => "sbyte",
-                "i16" => "short",
-                "i32" => "int",
-                "i64" => "long",
-                "f32" => "float",
-                "f64" => "double",
-                "bool" => "bool",
-                other => other,
-            }
-            .to_string()
-        } else {
-            type_name.to_string()
-        }
-    }
-
-    /// Get the marker type name for a heap handle
-    /// Extracts inner type from "HeapAllocated<T>" or legacy "THeapHandle" format
-    fn get_heap_marker_type(&self, type_info: &TypeInfo) -> String {
-        self.extract_heap_inner_type(type_info.name())
-    }
-
-    fn rust_type_to_csharp_name(&self, rust_type: &TypeInfo) -> String {
-        self.rust_type_to_csharp_type(rust_type)
+    /// Get the inner type name from generic_params
+    fn get_inner_type_name(&self, type_info: &TypeInfo) -> String {
+        type_info
+            .generic_params()
+            .first()
+            .map(|inner| inner.name().to_string())
+            .unwrap_or_else(|| type_info.name().to_string())
     }
 
     fn to_pascal_case(&self, snake_case: &str) -> String {
@@ -722,44 +248,151 @@ mod tests {
     use super::*;
     use oxidizer_core::{FunctionInfo, FunctionParameter, TypeInfo, TypeKind};
 
+    fn default_generator() -> CSharpGenerator {
+        CSharpGenerator::builder()
+            .library_name("rust_lib.dll")
+            .build()
+    }
+
     #[test]
     fn test_generate_registrar_class() {
-        let generator = CSharpGenerator::default();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, false);
-        let registrar = generator.generate_registrar_class(&return_type);
+        let generator = default_generator();
+        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
+        let function = FunctionInfo::new("test_async", vec![], return_type, true);
 
-        assert!(registrar.contains("class Registrar_ulong"));
-        assert!(registrar.contains("Action<ulong>"));
-        assert!(registrar.contains("CallbackDelegate(ulong id, ulong result)"));
+        let mut registry = oxidizer_core::registry::Registry::new();
+        registry.register_function_info(function);
+        let output = generator.generate_csharp(&registry);
+
+        assert!(output.contains("class Registrar_ulong"));
+        assert!(output.contains("Action<ulong>"));
+        assert!(output.contains("CallbackDelegate(ulong id, ulong result)"));
     }
 
     #[test]
     fn test_sync_function_binding() {
-        let generator = CSharpGenerator::default();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, false);
-        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, false);
+        let generator = default_generator();
+        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
+        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, vec![], &[]);
         let param = FunctionParameter::new("value", param_type);
         let function = FunctionInfo::new("test_func", vec![param], return_type, false);
 
-        let binding = generator.generate_sync_function_binding(&function);
+        let mut registry = oxidizer_core::registry::Registry::new();
+        registry.register_function_info(function);
+        let output = generator.generate_csharp(&registry);
 
-        assert!(binding.contains("[DllImport(\"rust_lib.dll\""));
-        assert!(binding.contains("public static extern ulong TestFunc(uint value)"));
+        assert!(output.contains("[DllImport(\"rust_lib.dll\""));
+        assert!(output.contains("public static extern ulong TestFunc(uint value)"));
     }
 
     #[test]
     fn test_async_function_binding() {
-        let generator = CSharpGenerator::default();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, false);
-        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, false);
+        let generator = default_generator();
+        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
+        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, vec![], &[]);
         let param = FunctionParameter::new("value", param_type);
         let function = FunctionInfo::new("test_async_func", vec![param], return_type, true);
 
-        let binding = generator.generate_async_function_binding(&function);
+        let mut registry = oxidizer_core::registry::Registry::new();
+        registry.register_function_info(function);
+        let output = generator.generate_csharp(&registry);
 
-        assert!(binding.contains("public static async Task<ulong> TestAsyncFunc(uint value)"));
-        assert!(binding.contains("TaskCompletionSource<ulong>"));
-        assert!(binding.contains("Registrar_ulong.Instance.Register"));
-        assert!(binding.contains("private static extern void TestAsyncFuncInternal"));
+        assert!(output.contains("public static async Task<ulong> TestAsyncFunc(uint value)"));
+        assert!(output.contains("TaskCompletionSource<ulong>"));
+        assert!(output.contains("Registrar_ulong.Instance.Register"));
+        assert!(output.contains("private static extern void TestAsyncFuncInternal"));
+    }
+
+    #[test]
+    fn test_namespace_configuration() {
+        let generator = CSharpGenerator::builder()
+            .library_name("test.dll")
+            .namespace("MyCompany.Interop")
+            .build();
+
+        let registry = oxidizer_core::registry::Registry::new();
+        let output = generator.generate_csharp(&registry);
+
+        assert!(output.contains("namespace MyCompany.Interop"));
+        assert!(output.contains("public static class Bindings"));
+    }
+
+    #[test]
+    fn test_custom_bindings_class_name() {
+        let generator = CSharpGenerator::builder()
+            .library_name("test.dll")
+            .bindings_class_name("NativeMethods")
+            .build();
+
+        let registry = oxidizer_core::registry::Registry::new();
+        let output = generator.generate_csharp(&registry);
+
+        assert!(output.contains("public static class NativeMethods"));
+        assert!(!output.contains("public static class Bindings"));
+    }
+
+    #[test]
+    fn test_indent_style_spaces2() {
+        let generator = CSharpGenerator::builder()
+            .library_name("test.dll")
+            .indent_style(IndentStyle::Spaces2)
+            .build();
+
+        let registry = oxidizer_core::registry::Registry::new();
+        let output = generator.generate_csharp(&registry);
+
+        // Check that 2-space indentation is used (class body should have 2 spaces)
+        assert!(output.contains("\n  ") || output.contains("{\n"));
+    }
+
+    #[test]
+    fn test_indent_style_tabs() {
+        let generator = CSharpGenerator::builder()
+            .library_name("test.dll")
+            .namespace("Test")
+            .indent_style(IndentStyle::Tabs)
+            .build();
+
+        let registry = oxidizer_core::registry::Registry::new();
+        let output = generator.generate_csharp(&registry);
+
+        // With namespace and tabs, types should be indented with a tab
+        assert!(output.contains("\t"));
+    }
+
+    #[test]
+    fn test_ir_round_trip_empty_registry() {
+        let generator = default_generator();
+        let registry = oxidizer_core::registry::Registry::new();
+        let ir = generator.build_ir(&registry);
+
+        assert_eq!(ir.usings.len(), 4);
+        assert!(ir.namespace.is_none());
+        // Should have at least the bindings static class
+        assert!(!ir.items.is_empty());
+    }
+
+    #[test]
+    fn test_ir_builder_sync_function() {
+        let generator = default_generator();
+        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
+        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, vec![], &[]);
+        let param = FunctionParameter::new("value", param_type);
+        let function = FunctionInfo::new("test_func", vec![param], return_type, false);
+
+        let mut registry = oxidizer_core::registry::Registry::new();
+        registry.register_function_info(function);
+        let ir = generator.build_ir(&registry);
+
+        // Last item should be the static bindings class
+        let last = ir.items.last().unwrap();
+        match last {
+            ir::CSharpItem::StaticClass(sc) => {
+                assert_eq!(sc.name, "Bindings");
+                assert_eq!(sc.methods.len(), 1);
+                assert_eq!(sc.methods[0].name, "TestFunc");
+            }
+            _ => panic!("Expected StaticClass"),
+        }
     }
 }

@@ -9,7 +9,12 @@ fn main() {
 
     let registry = rust_lib::get_ffi_types_registry();
 
-    let csharp_generator = CSharpGenerator::new("rust_lib.dll".to_owned());
+    let csharp_generator = CSharpGenerator::builder()
+        .library_name("rust_lib.dll")
+        .bindings_class_name("MyBindings")
+        .namespace("Native.Interop")
+        .indent_style(oxidizer::csgen::IndentStyle::Tabs)
+        .build();
     let csharp_contents = csharp_generator.generate_csharp(&registry);
 
     // Now generate a csharp file in src directory with contents as csharp_contents

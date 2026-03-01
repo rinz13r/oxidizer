@@ -7,7 +7,7 @@ macro_rules! impl_wire_type_primitive {
         $(
             impl WireType for $ty {
                 fn get_type_info() -> TypeInfo {
-                    TypeInfo::new($name, Vec::new(), $kind, false)
+                    TypeInfo::new($name, Vec::new(), $kind, vec![], &[])
                 }
             }
         )*

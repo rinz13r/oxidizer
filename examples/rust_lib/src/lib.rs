@@ -1,5 +1,5 @@
 use oxidizer::prelude::*;
-use oxidizer::{get_utils_registry, Registry};
+use oxidizer::{Registry, get_utils_registry};
 mod init;
 
 use init::RT;
@@ -25,6 +25,13 @@ fn get_large_array(count: u64) -> OwnedSlice<u64> {
     OwnedSlice::from_vec((0..count).collect())
 }
 
+/// Provides scoped access to data via callback. Safe!
+#[ffi_function]
+fn with_data(callback: SliceCallback<u64>) {
+    let data: Vec<u64> = vec![1, 2, 3, 4, 5];
+    callback.call(&data);
+}
+
 #[ffi_function]
 fn add(x: u64, y: u64) -> FFITy {
     FFITy { x, y }
@@ -43,18 +50,17 @@ async fn check_async_2(_param: i32) -> u64 {
 }
 
 #[ffi_function]
-fn heap_alloc_check_1() -> HeapAllocated<FFIHeapTy> {
-    HeapAllocated::new(FFIHeapTy { x: 10, y: 20 })
+fn heap_alloc_check_1() -> Owned<FFIHeapTy> {
+    Owned::new(FFIHeapTy { x: 10, y: 20 })
 }
 
 #[ffi_function]
-fn heap_alloc_check_2(_param: HeapAllocated<FFIHeapTy>) {
-}
+fn heap_alloc_check_2(_param: Owned<FFIHeapTy>) {}
 
 #[ffi_function(RT)]
-async fn heap_alloc_check_async() -> HeapAllocated<FFIHeapTy> {
+async fn heap_alloc_check_async() -> Owned<FFIHeapTy> {
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    HeapAllocated::new(FFIHeapTy { x: 10, y: 20 })
+    Owned::new(FFIHeapTy { x: 10, y: 20 })
 }
 
 #[ffi_type]
@@ -63,7 +69,7 @@ pub struct FFITy {
     pub y: u64,
 }
 
-#[ffi_type(heap)]
+#[ffi_type(marker)]
 pub struct FFIHeapTy {
     pub x: u64,
     pub y: u64,
@@ -74,7 +80,7 @@ pub fn get_ffi_types_registry() -> Registry {
 
     registry
         .register_type::<FFITy>()
-        .register_type::<HeapAllocated<FFIHeapTy>>()
+        .register_type::<Owned<FFIHeapTy>>()
         .register_function::<add>()
         .register_function::<check_async_1>()
         .register_function::<check_async_2>()
@@ -84,7 +90,9 @@ pub fn get_ffi_types_registry() -> Registry {
         // Slice functions
         .register_function::<get_numbers>()
         .register_function::<sum_numbers>()
-        .register_function::<get_large_array>();
+        .register_function::<get_large_array>()
+        // Slice callback functions (safe scoped access)
+        .register_function::<with_data>();
 
     registry
 }

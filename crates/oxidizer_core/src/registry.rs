@@ -29,6 +29,11 @@ impl Registry {
         self
     }
 
+    pub fn register_function_info(&mut self, function_info: FunctionInfo) -> &mut Self {
+        self.functions.push(function_info);
+        self
+    }
+
     pub fn new() -> Self {
         Registry {
             types: Vec::new(),

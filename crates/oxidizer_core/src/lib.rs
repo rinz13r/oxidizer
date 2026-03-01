@@ -53,14 +53,15 @@ impl FieldInfo {
     }
 }
 
-#[derive(Debug, Clone, new, Getters)]
+#[derive(Debug, Clone, Getters, new)]
 pub struct TypeInfo {
     #[getter(skip)]
     name: &'static str,
     fields: Vec<FieldInfo>,
     kind: TypeKind,
+    generic_params: Vec<TypeInfo>,
     #[getter(skip)]
-    is_heap_allocated: bool,
+    metadata: &'static [(&'static str, &'static str)],
 }
 
 impl TypeInfo {
@@ -68,8 +69,16 @@ impl TypeInfo {
         self.name
     }
 
-    pub fn is_heap_allocated(&self) -> bool {
-        self.is_heap_allocated
+    pub fn metadata(&self) -> &'static [(&'static str, &'static str)] {
+        self.metadata
+    }
+
+    /// Get a metadata value by key
+    pub fn get_metadata(&self, key: &str) -> Option<&'static str> {
+        self.metadata
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| *v)
     }
 }
 
@@ -92,10 +101,6 @@ pub enum TypeKind {
     // Unit/void type
     Void,
 
-    // User-defined type (value type, copied across FFI)
-    UserDefined,
-
-    // Slice types for Vec/slice transfer
-    Slice { element_kind: Box<TypeKind> },
-    OwnedSlice { element_kind: Box<TypeKind> },
+    // Struct type
+    Struct,
 }

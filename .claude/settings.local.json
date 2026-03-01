@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cargo build:*)",
+      "Bash(powershell.exe -Command \"cd ''Q:\\\\repos\\\\oxidizer''; cargo build\")",
+      "Bash(powershell.exe -Command \"$env:USERPROFILE\\\\.cargo\\\\bin\\\\cargo.exe build --manifest-path ''Q:\\\\repos\\\\oxidizer\\\\Cargo.toml''\")",
+      "Bash(cargo test:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File run.ps1)",
+      "Bash(findstr:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File Q:reposoxidizerrun.ps1)",
+      "Bash(powershell:*)"
+    ]
+  }
+}

@@ -1,74 +1,247 @@
-## Problems
+# Oxidizer
 
-1. Automatic bindings generation (Functions, Structs) from Rust to C# (or even other languages)
-2. Async Handling (Atleast in C# to begin with)
+Rust-to-C# FFI binding generator. Annotate Rust types and functions with proc macros, then generate type-safe C# P/Invoke bindings automatically.
 
-## Why
-1. Convenience and minimizing human errors. No manual developer intervention required to generate and maintain the bindings in various languages
+## Features
 
+- **Zero boilerplate** - Annotate Rust code, generate C# bindings in one step
+- **Async support** - Rust async functions become C# `Task<T>` methods
+- **Owned types** - Safe transfer of heap-allocated Rust objects with automatic cleanup via `IDisposable`
+- **Slice types** - Multiple patterns for different ownership scenarios:
+  - `OwnedSlice<T>` - Transfer `Vec` ownership to C#
+  - `FFISlice<T>` / `FFISliceMut<T>` - Borrow slices from C#
+  - `SliceCallback<T>` - Safe scoped access to Rust data via callback
+- **Type safety** - Generic wrappers preserve type information across the FFI boundary
 
-## Macros
-1. `#[ffi_type]`
-    - Generates the WireType impl for the corresponding type
-2. `#[ffi_function]`
-    - Instead of a function, it generates a struct with the same name, for ease of use
-    - Generates the WireFunction impl for hte corresponding function
+## Installation
 
+Add to your `Cargo.toml`:
 
-## Handling Async
-- Assuming that there's a static RT created. Ideally, we should be RT agnostic (tokio, smol, etc.)
-- Maybe the symbol can be passed as parameter to the ffi_function macro in the following manner
+```toml
+[dependencies]
+oxidizer = "0.1"
+
+[build-dependencies]
+oxidizer = { version = "0.1", features = ["csgen"] }
+```
+
+## Quick Start
+
+### 1. Annotate Rust Types and Functions
 
 ```rust
+use oxidizer::prelude::*;
+
+#[ffi_type]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[ffi_function]
+fn add_points(a: Point, b: Point) -> Point {
+    Point { x: a.x + b.x, y: a.y + b.y }
+}
+```
+
+### 2. Generate C# Bindings
+
+Create a registry and generate bindings (typically in `build.rs` or a separate crate):
+
+```rust
+use oxidizer::{Registry, csgen::CSharpGenerator};
+
+fn main() {
+    let mut registry = Registry::new();
+    registry
+        .register_type::<Point>()
+        .register_function::<add_points>();
+
+    let cs_code = CSharpGenerator::generate_csharp(&registry, "my_lib.dll");
+    std::fs::write("Generated.cs", cs_code).unwrap();
+}
+```
+
+### 3. Use in C#
+
+```csharp
+var result = Bindings.AddPoints(
+    new Point { X = 1.0, Y = 2.0 },
+    new Point { X = 3.0, Y = 4.0 }
+);
+Console.WriteLine($"Result: ({result.X}, {result.Y})");
+```
+
+## Async Functions
+
+Rust async functions are transformed into callback-based FFI and wrapped as C# `Task<T>`:
+
+```rust
+use oxidizer::prelude::*;
+use once_cell::sync::Lazy;
+use tokio::runtime::Runtime;
+
+static RT: Lazy<Runtime> = Lazy::new(|| Runtime::new().unwrap());
+
 #[ffi_function(RT)]
-async fn call(arg0: T0) -> TRes {
-    ...
+async fn fetch_data(id: u64) -> u64 {
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    id * 2
 }
 ```
 
-- Intentional choice: Forget about other RTs, support just tokio for now.
+C# receives an idiomatic async API:
 
-- We then transform this function to use the RT to spawn a task.
+```csharp
+ulong result = await Bindings.FetchData(42);
+```
+
+## Marker Types (Opaque Handles)
+
+Use `#[ffi_type(marker)]` for types that should be opaque to C#. The generated C# code contains an empty marker struct, and values are wrapped with `Owned<T>` on the Rust side:
 
 ```rust
-fn call(id: u64, arg0: T0, cb: extern "C" fn (u64, TRes)) {
-    // Original method pasted with just different function name
-    async fn call_internal(arg0: T0) -> TRes {
-        ...
-    }
+#[ffi_type(marker)]
+pub struct DatabaseConnection {
+    handle: *mut c_void,
+    // ... internal state
+}
 
-    // Task enqueued on RT which invokes cb after the call.
-    RT.spawn(async move || {
-        cb(id, call_internal(arg0).await);
-    });
+#[ffi_function]
+fn connect(url: &str) -> Owned<DatabaseConnection> {
+    Owned::new(DatabaseConnection { /* ... */ })
+}
+
+#[ffi_function]
+fn query(conn: Owned<DatabaseConnection>) {
+    // Use connection...
 }
 ```
 
-- On the C# side, we'll have 2 methods (one public and the other private)
-```CSharp
-class Bindings
-{
-    public static async Task<TRes> Call(T0 arg0)
-    {
-        var tcs = new TaskCompletionSource<TRes>();
+C# receives a type-safe `OwnedHandle<T>` with automatic cleanup:
 
-        var id = Registrar_TRes.Instance.Register(
-            (TRes res) =>
-            {
-                tcs.SetResult(res);
-            });
+```csharp
+using var conn = Bindings.Connect("localhost");
+Bindings.Query(conn);
+// Automatically calls Rust drop when disposed
+```
 
-        CallInternal(id, arg0, Registrar_TRes.Callback);
+## Slice Types
 
-        return await tcs.Task;
-    }
+### OwnedSlice - Transfer Vec Ownership
 
-    [DllImport("rust_lib.dll", EntryPoint = "call", CallingConvention = CallingConvention.Cdecl)]
-    private static void CallInternal(long id, T0 arg0, Registrar_TRes.CallbackDelegate cb);
+```rust
+#[ffi_function]
+fn get_numbers() -> OwnedSlice<u64> {
+    OwnedSlice::from_vec(vec![1, 2, 3, 4, 5])
 }
 ```
 
-- The Registrar class will be generated corresponding to each return type on the Rust side, since we need a static method at compilation time, which can be passed to the Rust side.
-Generic types are instantiated at runtime and location of static method will not be available.
+```csharp
+using var numbers = Bindings.GetNumbers();
+foreach (var n in numbers.AsSpan()) {
+    Console.WriteLine(n);
+}
+```
 
-- 
+### FFISlice - Borrow from C#
+
+```rust
+#[ffi_function]
+fn sum_numbers(data: FFISlice<u64>) -> u64 {
+    unsafe { data.as_slice().iter().sum() }
+}
+```
+
+```csharp
+Span<ulong> data = stackalloc ulong[] { 1, 2, 3, 4, 5 };
+ulong sum = Bindings.SumNumbers(data);
+```
+
+### SliceCallback - Safe Scoped Access
+
+When Rust needs to provide slice data to C#, use `SliceCallback` for safe scoped access:
+
+```rust
+#[ffi_function]
+fn with_data(callback: SliceCallback<u64>) {
+    let data = vec![1, 2, 3, 4, 5];
+    callback.call(&data);
+}
+```
+
+```csharp
+ulong sum = 0;
+Bindings.WithData((ReadOnlySpan<ulong> slice) => {
+    foreach (var n in slice) sum += n;
+});
+```
+
+## Crate Structure
+
+| Crate | Purpose |
+|-------|---------|
+| `oxidizer` | Facade crate re-exporting everything; `csgen` feature enables code generation |
+| `oxidizer_core` | Core traits (`WireType`, `WireFunction`) and metadata types (`TypeInfo`, `FunctionInfo`) |
+| `oxidizer_macro` | Proc macros: `#[ffi_type]`, `#[ffi_function]`, `#[ffi_type(marker)]` |
+| `oxidizer_utils` | FFI primitives: `Owned`, `OwnedSlice`, `FFISlice`, `FFISliceMut`, `SliceCallback` |
+| `oxidizer_csgen` | C# code generator (`CSharpGenerator`) |
+
+## Building
+
+```bash
+cargo build                  # Build core crates
+cargo build --workspace      # Build everything including examples
+cargo test --workspace       # Run all tests
+```
+
+## Example Project
+
+The `examples/` directory contains a complete workflow:
+
+```
+examples/
+  rust_lib/           # Rust cdylib with FFI exports
+  bindings-generator/ # Generates C# bindings via build.rs
+  DotnetApp/          # .NET console app consuming the bindings
+```
+
+Run the example:
+
+```powershell
+# Build Rust library
+cargo build -p rust_lib
+
+# Generate C# bindings
+cargo build -p bindings-generator
+
+# Run .NET app
+dotnet run --project examples/DotnetApp/DotnetApp.csproj
+```
+
+Or use the provided script:
+
+```powershell
+./examples/run.ps1
+```
+
+## Type Mapping
+
+| Rust Type | C# Type |
+|-----------|---------|
+| `u8`, `u16`, `u32`, `u64` | `byte`, `ushort`, `uint`, `ulong` |
+| `i8`, `i16`, `i32`, `i64` | `sbyte`, `short`, `int`, `long` |
+| `f32`, `f64` | `float`, `double` |
+| `bool` | `bool` |
+| `usize` | `nuint` |
+| `*const T`, `*mut T` | `nint` / `IntPtr` |
+| `#[ffi_type] struct` | `struct` (LayoutKind.Sequential) |
+| `Owned<T>` | `OwnedHandle<T>` |
+| `OwnedSlice<T>` | `OwnedArray<T>` |
+| `FFISlice<T>` | `ReadOnlySpan<T>` |
+| `FFISliceMut<T>` | `Span<T>` |
+| `SliceCallback<T>` | `SliceCallbackHandler<T>` |
+
+## License
+
+MIT
