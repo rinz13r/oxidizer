@@ -1,0 +1,5 @@
+error: ffi_function parameters must be simple identifiers, not patterns
+ --> tests/ui/non_ident_pattern_param.rs:4:8
+  |
+4 | fn foo((a, b): (u32, u32)) -> u32 {
+  |        ^^^^^^

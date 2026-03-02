@@ -12,3 +12,6 @@ oxidizer_core = { path = "../oxidizer_core" }
 oxidizer_macro = { path = "../oxidizer_macro" }
 oxidizer_utils = { path = "../oxidizer_utils" }
 oxidizer_csgen = { path = "../oxidizer_csgen", optional = true }
+
+[dev-dependencies]
+trybuild = "1.0"

@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, ItemFn, parse_macro_input};
 
@@ -26,7 +27,16 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Parse the attribute to check for "marker"
     let attr_str = attr.to_string();
-    let is_marker = !attr.is_empty() && attr_str.trim() == "marker";
+    let attr_trimmed = attr_str.trim();
+    if !attr.is_empty() && attr_trimmed != "marker" {
+        return syn::Error::new(
+            Span::call_site(),
+            format!("unknown ffi_type attribute: `{attr_trimmed}`. Expected `marker`"),
+        )
+        .to_compile_error()
+        .into();
+    }
+    let is_marker = !attr.is_empty();
 
     let struct_name = &input.ident;
     let vis = &input.vis;
@@ -46,22 +56,26 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             };
 
-            // Generate field info generation for each field
-            let field_generations: Vec<_> = fields
-                .iter()
-                .map(|field| {
-                    let field_name = field.ident.as_ref().unwrap();
-                    let field_name_str = field_name.to_string();
-                    let field_type = &field.ty;
+            // Generate field info generation for each field (skip for marker types)
+            let field_generations: Vec<_> = if is_marker {
+                vec![]
+            } else {
+                fields
+                    .iter()
+                    .map(|field| {
+                        let field_name = field.ident.as_ref().unwrap();
+                        let field_name_str = field_name.to_string();
+                        let field_type = &field.ty;
 
-                    quote! {
-                        fields.push(::oxidizer::__private::core::FieldInfo::new(
-                            #field_name_str,
-                            <#field_type as ::oxidizer::__private::core::WireType>::get_type_info(),
-                        ));
-                    }
-                })
-                .collect();
+                        quote! {
+                            fields.push(::oxidizer::__private::core::FieldInfo::new(
+                                #field_name_str,
+                                <#field_type as ::oxidizer::__private::core::WireType>::get_type_info(),
+                            ));
+                        }
+                    })
+                    .collect()
+            };
 
             let struct_name_str = struct_name.to_string();
 
@@ -75,8 +89,12 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
                 quote! { &[] }
             };
 
+            let repr_attr = if is_marker { quote! {} } else { quote! { #[repr(C)] } };
+            let user_attrs = &input.attrs;
+
             quote! {
-                #[repr(C)]
+                #repr_attr
+                #(#user_attrs)*
                 #vis struct #struct_name {
                     #fields
                 }
@@ -147,6 +165,7 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
     let fn_name_str = fn_name.to_string();
     let fn_block = &input.block;
     let fn_inputs = &input.sig.inputs;
+    let vis = &input.vis;
     let is_async = input.sig.asyncness.is_some();
 
     // Parse the attribute to get the runtime parameter
@@ -159,37 +178,31 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! { #runtime_tokens.handle() }
     };
 
-    // Extract parameter types for WireFunction implementation
-    let param_types: Vec<_> = input
-        .sig
-        .inputs
-        .iter()
-        .filter_map(|arg| {
-            if let syn::FnArg::Typed(pat_type) = arg {
-                Some(&pat_type.ty)
-            } else {
-                None
+    // Validate — reject non-ident patterns early
+    for arg in &input.sig.inputs {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            if !matches!(&*pat_type.pat, syn::Pat::Ident(_)) {
+                return syn::Error::new_spanned(
+                    &pat_type.pat,
+                    "ffi_function parameters must be simple identifiers, not patterns",
+                )
+                .to_compile_error()
+                .into();
             }
-        })
-        .collect();
+        }
+    }
 
-    let param_names: Vec<_> = input
+    // Extract parameter names and types in a single pass, guaranteed in sync
+    let (param_names, param_types): (Vec<_>, Vec<_>) = input
         .sig
         .inputs
         .iter()
         .filter_map(|arg| {
-            if let syn::FnArg::Typed(pat_type) = arg {
-                if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
-                    let ident = pat_ident.ident.to_string();
-                    Some(ident)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+            let syn::FnArg::Typed(pat_type) = arg else { return None };
+            let syn::Pat::Ident(pat_ident) = &*pat_type.pat else { unreachable!() };
+            Some((pat_ident.ident.to_string(), &*pat_type.ty))
         })
-        .collect();
+        .unzip();
 
     // Extract return type for the call method and WireFunction implementation
     let (call_return_type, wire_return_type) = match &input.sig.output {
@@ -249,7 +262,7 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         quote! {
             #[allow(non_camel_case_types)]
-            struct #fn_name;
+            #vis struct #fn_name;
 
             impl #fn_name {
                 // Internal async function with original logic
@@ -291,7 +304,7 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
         // For sync functions, keep original behavior
         quote! {
             #[allow(non_camel_case_types)]
-            struct #fn_name;
+            #vis struct #fn_name;
 
             impl #fn_name {
                 #[unsafe(export_name = #fn_name_str)]
