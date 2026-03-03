@@ -69,7 +69,7 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
 
                         quote! {
                             fields.push(::oxidizer::__private::core::FieldInfo::new(
-                                #field_name_str,
+                                #field_name_str.to_string(),
                                 <#field_type as ::oxidizer::__private::core::ReflectType>::get_type_info(),
                             ));
                         }
@@ -106,7 +106,7 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
                         #(#field_generations)*
 
                         ::oxidizer::__private::core::TypeInfo::new(
-                            #struct_name_str,
+                            #struct_name_str.to_string(),
                             fields,
                             ::oxidizer::__private::core::TypeKind::Struct,
                             vec![],
@@ -214,7 +214,7 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
             quote! {},
             quote! {
                 ::oxidizer::__private::core::TypeInfo::new(
-                    "()",
+                    "()".to_string(),
                     Vec::new(),
                     ::oxidizer::__private::core::TypeKind::Void,
                     vec![],
@@ -288,11 +288,11 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                     let mut parameters = vec![
                         // ::oxidizer::__private::core::FunctionParameter::new("id", ::oxidizer::__private::core::TypeInfo::new("u64", 8, vec![], ::oxidizer::__private::core::TypeKind::U64)),
                     ];
-                    #(parameters.push(::oxidizer::__private::core::FunctionParameter::new(#param_names, <#param_types as ::oxidizer::__private::core::ReflectType>::get_type_info()));)*
-                    // parameters.push(::oxidizer::__private::core::FunctionParameter::new("cb", ::oxidizer::__private::core::TypeInfo::new("callback", 8, vec![], ::oxidizer::__private::core::TypeKind::Struct)));
+                    #(parameters.push(::oxidizer::__private::core::FunctionParameter::new(#param_names.to_string(), <#param_types as ::oxidizer::__private::core::ReflectType>::get_type_info()));)*
+                    // parameters.push(::oxidizer::__private::core::FunctionParameter::new("cb".to_string(), ::oxidizer::__private::core::TypeInfo::new("callback".to_string(), 8, vec![], ::oxidizer::__private::core::TypeKind::Struct)));
 
                     ::oxidizer::__private::core::FunctionInfo::new(
-                        #fn_name_str,
+                        #fn_name_str.to_string(),
                         parameters,
                         #wire_return_type,
                         #is_async
@@ -316,9 +316,9 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
             impl ::oxidizer::__private::core::ReflectFunction for #fn_name {
                 fn get_function_info() -> ::oxidizer::__private::core::FunctionInfo {
                     ::oxidizer::__private::core::FunctionInfo::new(
-                        #fn_name_str,
+                        #fn_name_str.to_string(),
                         vec![
-                            #(::oxidizer::__private::core::FunctionParameter::new(#param_names, <#param_types as ::oxidizer::__private::core::ReflectType>::get_type_info())),*
+                            #(::oxidizer::__private::core::FunctionParameter::new(#param_names.to_string(), <#param_types as ::oxidizer::__private::core::ReflectType>::get_type_info())),*
                         ],
                         #wire_return_type,
                         #is_async

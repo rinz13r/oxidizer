@@ -10,30 +10,16 @@ pub trait ReflectFunction {
 
 #[derive(new, Getters)]
 pub struct FunctionInfo {
-    #[getter(skip)]
-    name: &'static str,
+    name: String,
     parameters: Vec<FunctionParameter>,
     return_type: TypeInfo,
     is_async: bool,
 }
 
-impl FunctionInfo {
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
-}
-
 #[derive(new, Getters)]
 pub struct FunctionParameter {
-    #[getter(skip)]
-    name: &'static str,
+    name: String,
     ty: TypeInfo,
-}
-
-impl FunctionParameter {
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
 }
 
 pub trait ReflectType {
@@ -42,21 +28,13 @@ pub trait ReflectType {
 
 #[derive(Debug, Clone, new, Getters)]
 pub struct FieldInfo {
-    #[getter(skip)]
-    name: &'static str,
+    name: String,
     ty: TypeInfo,
-}
-
-impl FieldInfo {
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
 }
 
 #[derive(Debug, Clone, Getters, new)]
 pub struct TypeInfo {
-    #[getter(skip)]
-    name: &'static str,
+    name: String,
     fields: Vec<FieldInfo>,
     kind: TypeKind,
     generic_params: Vec<TypeInfo>,
@@ -65,11 +43,7 @@ pub struct TypeInfo {
 }
 
 impl TypeInfo {
-    pub fn name(&self) -> &'static str {
-        self.name
-    }
-
-    pub fn metadata(&self) -> &'static [(&'static str, &'static str)] {
+    pub fn metadata(&self) -> &[(&'static str, &'static str)] {
         self.metadata
     }
 

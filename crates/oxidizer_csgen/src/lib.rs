@@ -257,8 +257,8 @@ mod tests {
     #[test]
     fn test_generate_registrar_class() {
         let generator = default_generator();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
-        let function = FunctionInfo::new("test_async", vec![], return_type, true);
+        let return_type = TypeInfo::new("u64".to_string(), vec![], TypeKind::U64, vec![], &[]);
+        let function = FunctionInfo::new("test_async".to_string(), vec![], return_type, true);
 
         let mut registry = oxidizer_core::registry::Registry::new();
         registry.register_function_info(function);
@@ -272,10 +272,10 @@ mod tests {
     #[test]
     fn test_sync_function_binding() {
         let generator = default_generator();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
-        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, vec![], &[]);
-        let param = FunctionParameter::new("value", param_type);
-        let function = FunctionInfo::new("test_func", vec![param], return_type, false);
+        let return_type = TypeInfo::new("u64".to_string(), vec![], TypeKind::U64, vec![], &[]);
+        let param_type = TypeInfo::new("u32".to_string(), vec![], TypeKind::U32, vec![], &[]);
+        let param = FunctionParameter::new("value".to_string(), param_type);
+        let function = FunctionInfo::new("test_func".to_string(), vec![param], return_type, false);
 
         let mut registry = oxidizer_core::registry::Registry::new();
         registry.register_function_info(function);
@@ -288,10 +288,10 @@ mod tests {
     #[test]
     fn test_async_function_binding() {
         let generator = default_generator();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
-        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, vec![], &[]);
-        let param = FunctionParameter::new("value", param_type);
-        let function = FunctionInfo::new("test_async_func", vec![param], return_type, true);
+        let return_type = TypeInfo::new("u64".to_string(), vec![], TypeKind::U64, vec![], &[]);
+        let param_type = TypeInfo::new("u32".to_string(), vec![], TypeKind::U32, vec![], &[]);
+        let param = FunctionParameter::new("value".to_string(), param_type);
+        let function = FunctionInfo::new("test_async_func".to_string(), vec![param], return_type, true);
 
         let mut registry = oxidizer_core::registry::Registry::new();
         registry.register_function_info(function);
@@ -375,10 +375,10 @@ mod tests {
     #[test]
     fn test_ir_builder_sync_function() {
         let generator = default_generator();
-        let return_type = TypeInfo::new("u64", vec![], TypeKind::U64, vec![], &[]);
-        let param_type = TypeInfo::new("u32", vec![], TypeKind::U32, vec![], &[]);
-        let param = FunctionParameter::new("value", param_type);
-        let function = FunctionInfo::new("test_func", vec![param], return_type, false);
+        let return_type = TypeInfo::new("u64".to_string(), vec![], TypeKind::U64, vec![], &[]);
+        let param_type = TypeInfo::new("u32".to_string(), vec![], TypeKind::U32, vec![], &[]);
+        let param = FunctionParameter::new("value".to_string(), param_type);
+        let function = FunctionInfo::new("test_func".to_string(), vec![param], return_type, false);
 
         let mut registry = oxidizer_core::registry::Registry::new();
         registry.register_function_info(function);

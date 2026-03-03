@@ -39,11 +39,11 @@ pub struct OwnedRaw {
 impl ReflectType for OwnedRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr", <*mut c_void as ReflectType>::get_type_info()),
-            FieldInfo::new("drop_fn", <*const c_void as ReflectType>::get_type_info()),
+            FieldInfo::new("ptr".to_string(), <*mut c_void as ReflectType>::get_type_info()),
+            FieldInfo::new("drop_fn".to_string(), <*const c_void as ReflectType>::get_type_info()),
         ];
         TypeInfo::new(
-            OWNED_RAW_NAME,
+            OWNED_RAW_NAME.to_string(),
             fields,
             TypeKind::Struct,
             vec![],
@@ -70,9 +70,9 @@ impl drop_owned {
 impl ReflectFunction for drop_owned {
     fn get_function_info() -> FunctionInfo {
         FunctionInfo::new(
-            "drop_owned",
-            vec![FunctionParameter::new("owned", OwnedRaw::get_type_info())],
-            TypeInfo::new("()", Vec::new(), TypeKind::Void, vec![], &[]),
+            "drop_owned".to_string(),
+            vec![FunctionParameter::new("owned".to_string(), OwnedRaw::get_type_info())],
+            TypeInfo::new("()".to_string(), Vec::new(), TypeKind::Void, vec![], &[]),
             false,
         )
     }
@@ -169,7 +169,7 @@ where
     fn get_type_info() -> TypeInfo {
         // Get the inner type's info to build the Owned type name
         let inner_type_info = T::get_type_info();
-        let type_name = Box::leak(format!("Owned<{}>", inner_type_info.name()).into_boxed_str());
+        let type_name = format!("Owned<{}>", inner_type_info.name());
 
         // Owned<T> has the same layout as OwnedRaw due to #[repr(transparent)]
         let raw_info = OwnedRaw::get_type_info();
@@ -234,7 +234,7 @@ impl<T> FFISlice<T> {
 impl<T: ReflectType> ReflectType for FFISlice<T> {
     fn get_type_info() -> TypeInfo {
         let element_info = T::get_type_info();
-        let type_name = Box::leak(format!("FFISlice<{}>", element_info.name()).into_boxed_str());
+        let type_name = format!("FFISlice<{}>", element_info.name());
 
         TypeInfo::new(
             type_name,
@@ -313,7 +313,7 @@ impl<T> FFISliceMut<T> {
 impl<T: ReflectType> ReflectType for FFISliceMut<T> {
     fn get_type_info() -> TypeInfo {
         let element_info = T::get_type_info();
-        let type_name = Box::leak(format!("FFISliceMut<{}>", element_info.name()).into_boxed_str());
+        let type_name = format!("FFISliceMut<{}>", element_info.name());
 
         TypeInfo::new(
             type_name,
@@ -344,11 +344,11 @@ pub struct FFISliceRaw {
 impl ReflectType for FFISliceRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr", <*const c_void as ReflectType>::get_type_info()),
-            FieldInfo::new("len", <usize as ReflectType>::get_type_info()),
+            FieldInfo::new("ptr".to_string(), <*const c_void as ReflectType>::get_type_info()),
+            FieldInfo::new("len".to_string(), <usize as ReflectType>::get_type_info()),
         ];
         TypeInfo::new(
-            FFI_SLICE_RAW_NAME,
+            FFI_SLICE_RAW_NAME.to_string(),
             fields,
             TypeKind::Struct,
             vec![],
@@ -424,7 +424,7 @@ impl<T> OwnedSlice<T> {
 impl<T: ReflectType> ReflectType for OwnedSlice<T> {
     fn get_type_info() -> TypeInfo {
         let element_info = T::get_type_info();
-        let type_name = Box::leak(format!("OwnedSlice<{}>", element_info.name()).into_boxed_str());
+        let type_name = format!("OwnedSlice<{}>", element_info.name());
 
         TypeInfo::new(
             type_name,
@@ -458,14 +458,14 @@ pub struct OwnedSliceRaw {
 impl ReflectType for OwnedSliceRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr", <*mut c_void as ReflectType>::get_type_info()),
-            FieldInfo::new("len", <usize as ReflectType>::get_type_info()),
-            FieldInfo::new("capacity", <usize as ReflectType>::get_type_info()),
-            FieldInfo::new("element_size", <usize as ReflectType>::get_type_info()),
-            FieldInfo::new("drop_fn", <*const c_void as ReflectType>::get_type_info()),
+            FieldInfo::new("ptr".to_string(), <*mut c_void as ReflectType>::get_type_info()),
+            FieldInfo::new("len".to_string(), <usize as ReflectType>::get_type_info()),
+            FieldInfo::new("capacity".to_string(), <usize as ReflectType>::get_type_info()),
+            FieldInfo::new("element_size".to_string(), <usize as ReflectType>::get_type_info()),
+            FieldInfo::new("drop_fn".to_string(), <*const c_void as ReflectType>::get_type_info()),
         ];
         TypeInfo::new(
-            OWNED_SLICE_RAW_NAME,
+            OWNED_SLICE_RAW_NAME.to_string(),
             fields,
             TypeKind::Struct,
             vec![],
@@ -497,9 +497,9 @@ impl drop_owned_slice {
 impl ReflectFunction for drop_owned_slice {
     fn get_function_info() -> FunctionInfo {
         FunctionInfo::new(
-            "drop_owned_slice",
-            vec![FunctionParameter::new("os", OwnedSliceRaw::get_type_info())],
-            TypeInfo::new("()", Vec::new(), TypeKind::Void, vec![], &[]),
+            "drop_owned_slice".to_string(),
+            vec![FunctionParameter::new("os".to_string(), OwnedSliceRaw::get_type_info())],
+            TypeInfo::new("()".to_string(), Vec::new(), TypeKind::Void, vec![], &[]),
             false,
         )
     }
@@ -544,8 +544,7 @@ impl<T> SliceCallback<T> {
 impl<T: ReflectType> ReflectType for SliceCallback<T> {
     fn get_type_info() -> TypeInfo {
         let element_info = T::get_type_info();
-        let type_name =
-            Box::leak(format!("SliceCallback<{}>", element_info.name()).into_boxed_str());
+        let type_name = format!("SliceCallback<{}>", element_info.name());
 
         TypeInfo::new(
             type_name,

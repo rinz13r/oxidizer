@@ -7,7 +7,7 @@ macro_rules! impl_reflect_type_primitive {
         $(
             impl ReflectType for $ty {
                 fn get_type_info() -> TypeInfo {
-                    TypeInfo::new($name, Vec::new(), $kind, vec![], &[])
+                    TypeInfo::new($name.to_string(), Vec::new(), $kind, vec![], &[])
                 }
             }
         )*
