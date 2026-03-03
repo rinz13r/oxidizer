@@ -42,16 +42,6 @@ pub use oxidizer_utils::{
     get_utils_registry,
 };
 
-// Conditionally re-export csgen (for build-time code generation)
-#[cfg(feature = "csgen")]
-pub mod csgen {
-    //! C# code generation module.
-    //!
-    //! This module is only available with the `csgen` feature enabled.
-    //! It's typically used in build scripts to generate C# bindings.
-    pub use oxidizer_csgen::*;
-}
-
 /// Prelude module for convenient imports.
 ///
 /// Use `use oxidizer::prelude::*;` to import commonly used items:

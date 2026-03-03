@@ -3,15 +3,10 @@ name = "oxidizer"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-default = []
-csgen = ["dep:oxidizer_csgen"]
-
 [dependencies]
 oxidizer_core = { path = "../oxidizer_core" }
 oxidizer_macro = { path = "../oxidizer_macro" }
 oxidizer_utils = { path = "../oxidizer_utils" }
-oxidizer_csgen = { path = "../oxidizer_csgen", optional = true }
 
 [dev-dependencies]
 trybuild = "1.0"

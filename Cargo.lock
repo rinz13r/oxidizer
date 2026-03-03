@@ -6,7 +6,7 @@ version = 4
 name = "bindings-generator"
 version = "0.1.0"
 dependencies = [
- "oxidizer",
+ "oxidizer_csgen",
  "rust_lib",
 ]
 
@@ -223,7 +223,6 @@ name = "oxidizer"
 version = "0.1.0"
 dependencies = [
  "oxidizer_core",
- "oxidizer_csgen",
  "oxidizer_macro",
  "oxidizer_utils",
  "trybuild",

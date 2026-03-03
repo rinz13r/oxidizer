@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-use oxidizer::csgen::CSharpGenerator;
+use oxidizer_csgen::CSharpGenerator;
 
 fn main() {
     println!("Build tools starting...");
@@ -13,7 +13,7 @@ fn main() {
         .library_name("rust_lib.dll")
         .bindings_class_name("MyBindings")
         .namespace("Native.Interop")
-        .indent_style(oxidizer::csgen::IndentStyle::Tabs)
+        .indent_style(oxidizer_csgen::IndentStyle::Tabs)
         .build();
     let csharp_contents = csharp_generator.generate_csharp(&registry);
 

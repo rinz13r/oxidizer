@@ -5,4 +5,4 @@ edition = "2024"
 
 [build-dependencies]
 rust_lib = { path = "../rust_lib" }
-oxidizer = { path = "../../crates/oxidizer", features = ["csgen"] }
+oxidizer_csgen = { path = "../../crates/oxidizer_csgen" }
