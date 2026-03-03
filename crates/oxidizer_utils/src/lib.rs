@@ -1,10 +1,10 @@
 use std::ffi::c_void;
 
 use oxidizer_core::{
-    FieldInfo, FunctionInfo, FunctionParameter, TypeInfo, TypeKind, WireFunction, WireType,
+    FieldInfo, FunctionInfo, FunctionParameter, TypeInfo, TypeKind, ReflectFunction, ReflectType,
 };
 
-// Note: We manually implement WireType/WireFunction here instead of using the macros
+// Note: We manually implement ReflectType/ReflectFunction here instead of using the macros
 // because the macros generate code that references ::oxidizer::, which would create
 // a circular dependency (oxidizer depends on oxidizer_utils).
 
@@ -36,11 +36,11 @@ pub struct OwnedRaw {
     drop_fn: *const c_void,
 }
 
-impl WireType for OwnedRaw {
+impl ReflectType for OwnedRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr", <*mut c_void as WireType>::get_type_info()),
-            FieldInfo::new("drop_fn", <*const c_void as WireType>::get_type_info()),
+            FieldInfo::new("ptr", <*mut c_void as ReflectType>::get_type_info()),
+            FieldInfo::new("drop_fn", <*const c_void as ReflectType>::get_type_info()),
         ];
         TypeInfo::new(
             OWNED_RAW_NAME,
@@ -67,7 +67,7 @@ impl drop_owned {
     }
 }
 
-impl WireFunction for drop_owned {
+impl ReflectFunction for drop_owned {
     fn get_function_info() -> FunctionInfo {
         FunctionInfo::new(
             "drop_owned",
@@ -162,9 +162,9 @@ impl<T> Owned<T> {
     }
 }
 
-impl<T> WireType for Owned<T>
+impl<T> ReflectType for Owned<T>
 where
-    T: WireType,
+    T: ReflectType,
 {
     fn get_type_info() -> TypeInfo {
         // Get the inner type's info to build the Owned type name
@@ -231,7 +231,7 @@ impl<T> FFISlice<T> {
     }
 }
 
-impl<T: WireType> WireType for FFISlice<T> {
+impl<T: ReflectType> ReflectType for FFISlice<T> {
     fn get_type_info() -> TypeInfo {
         let element_info = T::get_type_info();
         let type_name = Box::leak(format!("FFISlice<{}>", element_info.name()).into_boxed_str());
@@ -310,7 +310,7 @@ impl<T> FFISliceMut<T> {
     }
 }
 
-impl<T: WireType> WireType for FFISliceMut<T> {
+impl<T: ReflectType> ReflectType for FFISliceMut<T> {
     fn get_type_info() -> TypeInfo {
         let element_info = T::get_type_info();
         let type_name = Box::leak(format!("FFISliceMut<{}>", element_info.name()).into_boxed_str());
@@ -341,11 +341,11 @@ pub struct FFISliceRaw {
     pub len: usize,
 }
 
-impl WireType for FFISliceRaw {
+impl ReflectType for FFISliceRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr", <*const c_void as WireType>::get_type_info()),
-            FieldInfo::new("len", <usize as WireType>::get_type_info()),
+            FieldInfo::new("ptr", <*const c_void as ReflectType>::get_type_info()),
+            FieldInfo::new("len", <usize as ReflectType>::get_type_info()),
         ];
         TypeInfo::new(
             FFI_SLICE_RAW_NAME,
@@ -421,7 +421,7 @@ impl<T> OwnedSlice<T> {
     }
 }
 
-impl<T: WireType> WireType for OwnedSlice<T> {
+impl<T: ReflectType> ReflectType for OwnedSlice<T> {
     fn get_type_info() -> TypeInfo {
         let element_info = T::get_type_info();
         let type_name = Box::leak(format!("OwnedSlice<{}>", element_info.name()).into_boxed_str());
@@ -455,14 +455,14 @@ pub struct OwnedSliceRaw {
     pub drop_fn: *const c_void,
 }
 
-impl WireType for OwnedSliceRaw {
+impl ReflectType for OwnedSliceRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr", <*mut c_void as WireType>::get_type_info()),
-            FieldInfo::new("len", <usize as WireType>::get_type_info()),
-            FieldInfo::new("capacity", <usize as WireType>::get_type_info()),
-            FieldInfo::new("element_size", <usize as WireType>::get_type_info()),
-            FieldInfo::new("drop_fn", <*const c_void as WireType>::get_type_info()),
+            FieldInfo::new("ptr", <*mut c_void as ReflectType>::get_type_info()),
+            FieldInfo::new("len", <usize as ReflectType>::get_type_info()),
+            FieldInfo::new("capacity", <usize as ReflectType>::get_type_info()),
+            FieldInfo::new("element_size", <usize as ReflectType>::get_type_info()),
+            FieldInfo::new("drop_fn", <*const c_void as ReflectType>::get_type_info()),
         ];
         TypeInfo::new(
             OWNED_SLICE_RAW_NAME,
@@ -494,7 +494,7 @@ impl drop_owned_slice {
     }
 }
 
-impl WireFunction for drop_owned_slice {
+impl ReflectFunction for drop_owned_slice {
     fn get_function_info() -> FunctionInfo {
         FunctionInfo::new(
             "drop_owned_slice",
@@ -541,7 +541,7 @@ impl<T> SliceCallback<T> {
     }
 }
 
-impl<T: WireType> WireType for SliceCallback<T> {
+impl<T: ReflectType> ReflectType for SliceCallback<T> {
     fn get_type_info() -> TypeInfo {
         let element_info = T::get_type_info();
         let type_name =

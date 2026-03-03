@@ -1,11 +1,11 @@
-use crate::{TypeInfo, TypeKind, WireType};
+use crate::{TypeInfo, TypeKind, ReflectType};
 use std::ffi::c_void;
 
-// Helper macro to implement WireType for primitive types
-macro_rules! impl_wire_type_primitive {
+// Helper macro to implement ReflectType for primitive types
+macro_rules! impl_reflect_type_primitive {
     ($($ty:ty => ($name:expr, $kind:expr)),*) => {
         $(
-            impl WireType for $ty {
+            impl ReflectType for $ty {
                 fn get_type_info() -> TypeInfo {
                     TypeInfo::new($name, Vec::new(), $kind, vec![], &[])
                 }
@@ -14,8 +14,8 @@ macro_rules! impl_wire_type_primitive {
     };
 }
 
-// Implement WireType for common primitive types
-impl_wire_type_primitive! {
+// Implement ReflectType for common primitive types
+impl_reflect_type_primitive! {
     u8 => ("u8", TypeKind::U8),
     u16 => ("u16", TypeKind::U16),
     u32 => ("u32", TypeKind::U32),

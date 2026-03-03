@@ -41,7 +41,7 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
     let struct_name = &input.ident;
     let vis = &input.vis;
 
-    // Generate the original struct and implement WireType trait
+    // Generate the original struct and implement ReflectType trait
     let expanded = match &input.data {
         Data::Struct(data_struct) => {
             let fields = match &data_struct.fields {
@@ -70,7 +70,7 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
                         quote! {
                             fields.push(::oxidizer::__private::core::FieldInfo::new(
                                 #field_name_str,
-                                <#field_type as ::oxidizer::__private::core::WireType>::get_type_info(),
+                                <#field_type as ::oxidizer::__private::core::ReflectType>::get_type_info(),
                             ));
                         }
                     })
@@ -99,7 +99,7 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
                     #fields
                 }
 
-                impl ::oxidizer::__private::core::WireType for #struct_name {
+                impl ::oxidizer::__private::core::ReflectType for #struct_name {
                     fn get_type_info() -> ::oxidizer::__private::core::TypeInfo {
                         let mut fields = Vec::new();
 
@@ -147,7 +147,7 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///     }
 /// }
 ///
-/// impl WireFunction for add {
+/// impl ReflectFunction for add {
 ///     fn get_function_info() -> ::oxidizer::__private::core::FunctionInfo {
 ///         ::oxidizer::__private::core::FunctionInfo {
 ///             name: "add",
@@ -204,11 +204,11 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
         })
         .unzip();
 
-    // Extract return type for the call method and WireFunction implementation
+    // Extract return type for the call method and ReflectFunction implementation
     let (call_return_type, wire_return_type) = match &input.sig.output {
         syn::ReturnType::Type(arrow, ty) => (
             quote! { #arrow #ty },
-            quote! { <#ty as ::oxidizer::__private::core::WireType>::get_type_info() },
+            quote! { <#ty as ::oxidizer::__private::core::ReflectType>::get_type_info() },
         ),
         syn::ReturnType::Default => (
             quote! {},
@@ -283,12 +283,12 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
 
-            impl ::oxidizer::__private::core::WireFunction for #fn_name {
+            impl ::oxidizer::__private::core::ReflectFunction for #fn_name {
                 fn get_function_info() -> ::oxidizer::__private::core::FunctionInfo {
                     let mut parameters = vec![
                         // ::oxidizer::__private::core::FunctionParameter::new("id", ::oxidizer::__private::core::TypeInfo::new("u64", 8, vec![], ::oxidizer::__private::core::TypeKind::U64)),
                     ];
-                    #(parameters.push(::oxidizer::__private::core::FunctionParameter::new(#param_names, <#param_types as ::oxidizer::__private::core::WireType>::get_type_info()));)*
+                    #(parameters.push(::oxidizer::__private::core::FunctionParameter::new(#param_names, <#param_types as ::oxidizer::__private::core::ReflectType>::get_type_info()));)*
                     // parameters.push(::oxidizer::__private::core::FunctionParameter::new("cb", ::oxidizer::__private::core::TypeInfo::new("callback", 8, vec![], ::oxidizer::__private::core::TypeKind::Struct)));
 
                     ::oxidizer::__private::core::FunctionInfo::new(
@@ -313,12 +313,12 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
 
-            impl ::oxidizer::__private::core::WireFunction for #fn_name {
+            impl ::oxidizer::__private::core::ReflectFunction for #fn_name {
                 fn get_function_info() -> ::oxidizer::__private::core::FunctionInfo {
                     ::oxidizer::__private::core::FunctionInfo::new(
                         #fn_name_str,
                         vec![
-                            #(::oxidizer::__private::core::FunctionParameter::new(#param_names, <#param_types as ::oxidizer::__private::core::WireType>::get_type_info())),*
+                            #(::oxidizer::__private::core::FunctionParameter::new(#param_names, <#param_types as ::oxidizer::__private::core::ReflectType>::get_type_info())),*
                         ],
                         #wire_return_type,
                         #is_async

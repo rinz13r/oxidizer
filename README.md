@@ -182,7 +182,7 @@ Bindings.WithData((ReadOnlySpan<ulong> slice) => {
 | Crate | Purpose |
 |-------|---------|
 | `oxidizer` | Facade crate re-exporting everything; `csgen` feature enables code generation |
-| `oxidizer_core` | Core traits (`WireType`, `WireFunction`) and metadata types (`TypeInfo`, `FunctionInfo`) |
+| `oxidizer_core` | Core traits (`ReflectType`, `ReflectFunction`) and metadata types (`TypeInfo`, `FunctionInfo`) |
 | `oxidizer_macro` | Proc macros: `#[ffi_type]`, `#[ffi_function]`, `#[ffi_type(marker)]` |
 | `oxidizer_utils` | FFI primitives: `Owned`, `OwnedSlice`, `FFISlice`, `FFISliceMut`, `SliceCallback` |
 | `oxidizer_csgen` | C# code generator (`CSharpGenerator`) |

@@ -4,7 +4,7 @@ use derive_new::new;
 pub mod impls;
 pub mod registry;
 
-pub trait WireFunction {
+pub trait ReflectFunction {
     fn get_function_info() -> FunctionInfo;
 }
 
@@ -36,7 +36,7 @@ impl FunctionParameter {
     }
 }
 
-pub trait WireType {
+pub trait ReflectType {
     fn get_type_info() -> TypeInfo;
 }
 

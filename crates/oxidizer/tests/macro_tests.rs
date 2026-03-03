@@ -1,4 +1,4 @@
-use oxidizer::{WireType, ffi_function, ffi_type};
+use oxidizer::{ReflectType, ffi_function, ffi_type};
 
 // --- ffi_type tests ---
 
@@ -71,7 +71,7 @@ mod inner {
 #[test]
 fn pub_function_struct_accessible_from_parent() {
     // If the generated struct didn't propagate `pub`, this wouldn't compile.
-    use oxidizer::WireFunction;
+    use oxidizer::ReflectFunction;
     let info = inner::visible_fn::get_function_info();
     assert_eq!(info.name(), "visible_fn");
 }
@@ -85,7 +85,7 @@ fn multi_param(a: u32, b: u64, c: i32) -> u32 {
 
 #[test]
 fn function_params_in_sync() {
-    use oxidizer::WireFunction;
+    use oxidizer::ReflectFunction;
     let info = multi_param::get_function_info();
     let params = info.parameters();
     assert_eq!(params.len(), 3);
