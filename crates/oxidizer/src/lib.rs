@@ -36,6 +36,10 @@ pub use oxidizer_core::{
 // Re-export registry
 pub use oxidizer_core::registry::Registry;
 
+// Re-export Python code generator (optional)
+#[cfg(feature = "pygen")]
+pub use oxidizer_pygen;
+
 // Re-export FFI utilities
 pub use oxidizer_utils::{
     FFISlice, FFISliceMut, FFISliceRaw, Owned, OwnedRaw, OwnedSlice, OwnedSliceRaw, SliceCallback,

@@ -7,6 +7,10 @@ edition = "2024"
 oxidizer_core = { path = "../oxidizer_core" }
 oxidizer_macro = { path = "../oxidizer_macro" }
 oxidizer_utils = { path = "../oxidizer_utils" }
+oxidizer_pygen = { path = "../oxidizer_pygen", optional = true }
+
+[features]
+pygen = ["dep:oxidizer_pygen"]
 
 [dev-dependencies]
 trybuild = "1.0"

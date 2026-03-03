@@ -7,6 +7,7 @@ name = "bindings-generator"
 version = "0.1.0"
 dependencies = [
  "oxidizer_csgen",
+ "oxidizer_pygen",
  "rust_lib",
 ]
 
@@ -224,6 +225,7 @@ version = "0.1.0"
 dependencies = [
  "oxidizer_core",
  "oxidizer_macro",
+ "oxidizer_pygen",
  "oxidizer_utils",
  "trybuild",
 ]
@@ -252,6 +254,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "oxidizer_pygen"
+version = "0.1.0"
+dependencies = [
+ "bon",
+ "oxidizer_core",
 ]
 
 [[package]]

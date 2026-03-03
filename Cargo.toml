@@ -5,6 +5,7 @@ members = [
     "crates/oxidizer_macro",
     "crates/oxidizer_utils",
     "crates/oxidizer_csgen",
+    "crates/oxidizer_pygen",
     "crates/oxidizer",
 
     # Example/test crates
@@ -17,6 +18,7 @@ default-members = [
     "crates/oxidizer_macro",
     "crates/oxidizer_utils",
     "crates/oxidizer_csgen",
+    "crates/oxidizer_pygen",
     "crates/oxidizer",
 ]
 

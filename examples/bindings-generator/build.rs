@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use oxidizer_csgen::CSharpGenerator;
+use oxidizer_pygen::PythonGenerator;
 
 fn main() {
     println!("Build tools starting...");
@@ -17,10 +18,17 @@ fn main() {
         .build();
     let csharp_contents = csharp_generator.generate_csharp(&registry);
 
-    // Now generate a csharp file in src directory with contents as csharp_contents
+    let python_generator = PythonGenerator::builder()
+        .library_name("rust_lib.dll")
+        .build();
+    let python_contents = python_generator.generate_python(&registry);
+
     let output_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let dest_path = Path::new(&output_dir).join("src").join("Generated.cs");
-    fs::write(&dest_path, csharp_contents).expect("Failed to write C# file");
+    let src_dir = Path::new(&output_dir).join("src");
+
+    fs::write(src_dir.join("Generated.cs"), csharp_contents).expect("Failed to write C# file");
+    fs::write(src_dir.join("Generated.py"), python_contents)
+        .expect("Failed to write Python file");
 
     println!("Build tools completed successfully!");
 }

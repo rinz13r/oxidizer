@@ -29,6 +29,11 @@ impl Registry {
         self
     }
 
+    pub fn register_type_info(&mut self, type_info: crate::TypeInfo) -> &mut Self {
+        self.types.push(type_info);
+        self
+    }
+
     pub fn register_function_info(&mut self, function_info: FunctionInfo) -> &mut Self {
         self.functions.push(function_info);
         self
