@@ -116,6 +116,7 @@ impl CSharpGenerator {
             constraints: None,
             fields,
             properties: vec![],
+            constructors: vec![],
             methods: vec![],
             indexers: vec![],
         })
@@ -263,6 +264,7 @@ impl CSharpGenerator {
                 name: "Length".into(),
                 body: PropertyBody::Expression("(int)_raw.Len".into()),
             }],
+            constructors: vec![],
             methods: vec![
                 CSharpMethod {
                     doc_lines: vec![],
@@ -323,6 +325,7 @@ impl CSharpGenerator {
                 name: "Length".into(),
                 body: PropertyBody::Expression("(int)_raw.Len".into()),
             }],
+            constructors: vec![],
             methods: vec![
                 CSharpMethod {
                     doc_lines: vec![],
@@ -505,6 +508,7 @@ impl CSharpGenerator {
                 },
             ],
             properties: vec![],
+            constructors: vec![],
             methods: vec![],
             indexers: vec![],
         })
@@ -837,10 +841,24 @@ impl CSharpGenerator {
             attributes: vec![],
             visibility: Visibility::Public,
             is_ref_struct: false,
-            name: marker_name,
+            name: marker_name.clone(),
             constraints: None,
             fields: vec![],
             properties: vec![],
+            constructors: vec![CSharpMethod {
+                doc_lines: vec![],
+                attributes: vec![format!(
+                    "[Obsolete(\"{marker_name} is not constructible from C#. Instances are allocated on the Rust side.\", true)]"
+                )],
+                visibility: Visibility::Public,
+                modifiers: vec![],
+                return_type: String::new(),
+                name: marker_name,
+                parameters: vec![],
+                body: MethodBody::Block(vec![
+                    "throw new NotSupportedException();".into(),
+                ]),
+            }],
             methods: vec![],
             indexers: vec![],
         })
@@ -873,6 +891,7 @@ impl CSharpGenerator {
             constraints: None,
             fields,
             properties: vec![],
+            constructors: vec![],
             methods: vec![],
             indexers: vec![],
         })

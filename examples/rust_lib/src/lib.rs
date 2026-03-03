@@ -57,6 +57,12 @@ fn heap_alloc_check_1() -> Owned<FFIHeapTy> {
 #[ffi_function]
 fn heap_alloc_check_2(_param: Owned<FFIHeapTy>) {}
 
+#[ffi_function]
+fn heap_sum(param: Owned<FFIHeapTy>) -> u64 {
+    let val = unsafe { param.as_ref() };
+    val.x + val.y
+}
+
 #[ffi_function(RT)]
 async fn heap_alloc_check_async() -> Owned<FFIHeapTy> {
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -86,6 +92,7 @@ pub fn get_ffi_types_registry() -> Registry {
         .register_function::<check_async_2>()
         .register_function::<heap_alloc_check_1>()
         .register_function::<heap_alloc_check_2>()
+        .register_function::<heap_sum>()
         .register_function::<heap_alloc_check_async>()
         // Slice functions
         .register_function::<get_numbers>()

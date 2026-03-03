@@ -37,6 +37,7 @@ pub struct CSharpStruct {
     pub constraints: Option<String>,
     pub fields: Vec<CSharpField>,
     pub properties: Vec<CSharpProperty>,
+    pub constructors: Vec<CSharpMethod>,
     pub methods: Vec<CSharpMethod>,
     pub indexers: Vec<CSharpIndexer>,
 }
@@ -210,6 +211,7 @@ mod tests {
             constraints: None,
             fields: vec![],
             properties: vec![],
+            constructors: vec![],
             methods: vec![],
             indexers: vec![],
         });
@@ -408,6 +410,7 @@ mod tests {
                 },
             ],
             properties: vec![],
+            constructors: vec![],
             methods: vec![],
             indexers: vec![],
         };
