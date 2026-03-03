@@ -57,6 +57,8 @@ pub struct CSharpClass {
     pub fields: Vec<CSharpField>,
     pub properties: Vec<CSharpProperty>,
     pub constructors: Vec<CSharpMethod>,
+    /// Optional finalizer body lines. Rendered as `~ClassName() { ... }`
+    pub finalizer: Option<Vec<String>>,
     pub methods: Vec<CSharpMethod>,
     pub delegates: Vec<CSharpDelegate>,
     pub indexers: Vec<CSharpIndexer>,
@@ -223,6 +225,7 @@ mod tests {
             fields: vec![],
             properties: vec![],
             constructors: vec![],
+            finalizer: None,
             methods: vec![],
             delegates: vec![],
             indexers: vec![],
@@ -309,6 +312,7 @@ mod tests {
                     }],
                     body: MethodBody::Expression("_val = v".into()),
                 }],
+                finalizer: None,
                 methods: vec![CSharpMethod {
                     doc_lines: vec![],
                     attributes: vec!["[Obsolete]".into()],

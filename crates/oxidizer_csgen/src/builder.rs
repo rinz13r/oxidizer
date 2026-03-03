@@ -184,6 +184,7 @@ impl CSharpGenerator {
                 }],
                 body: MethodBody::Expression("_raw = raw".into()),
             }],
+            finalizer: Some(vec!["Dispose();".into()]),
             methods: vec![CSharpMethod {
                 doc_lines: vec![],
                 attributes: vec![],
@@ -195,6 +196,7 @@ impl CSharpGenerator {
                 body: MethodBody::Block(vec![
                     "if (_disposed) return;".into(),
                     "_disposed = true;".into(),
+                    "GC.SuppressFinalize(this);".into(),
                     String::new(),
                     "if (_raw.Ptr != IntPtr.Zero)".into(),
                     "{".into(),
@@ -414,6 +416,7 @@ impl CSharpGenerator {
                 }],
                 body: MethodBody::Expression("_raw = raw".into()),
             }],
+            finalizer: Some(vec!["Dispose();".into()]),
             methods: vec![
                 CSharpMethod {
                     doc_lines: vec![],
@@ -441,6 +444,7 @@ impl CSharpGenerator {
                     body: MethodBody::Block(vec![
                         "if (_disposed) return;".into(),
                         "_disposed = true;".into(),
+                        "GC.SuppressFinalize(this);".into(),
                         String::new(),
                         "if (_raw.Ptr != IntPtr.Zero)".into(),
                         "{".into(),
@@ -617,12 +621,16 @@ impl CSharpGenerator {
                         },
                     ],
                     body: MethodBody::Block(vec![
-                        "if (Instance.registrations.TryGetValue(id, out var callback))".into(),
+                        format!("Action<ReadOnlySpan<{csharp_element_type}>> callback = null;"),
+                        "lock (Instance.lockObj)".into(),
                         "{".into(),
-                        "    lock (Instance.lockObj)".into(),
+                        "    if (Instance.registrations.TryGetValue(id, out callback))".into(),
                         "    {".into(),
                         "        Instance.registrations.Remove(id);".into(),
                         "    }".into(),
+                        "}".into(),
+                        "if (callback != null)".into(),
+                        "{".into(),
                         "    unsafe".into(),
                         "    {".into(),
                         format!(
@@ -634,6 +642,7 @@ impl CSharpGenerator {
                     ]),
                 },
             ],
+            finalizer: None,
             delegates: vec![CSharpDelegate {
                 visibility: Visibility::Public,
                 return_type: "void".into(),
@@ -760,17 +769,19 @@ impl CSharpGenerator {
                         },
                     ],
                     body: MethodBody::Block(vec![
-                        "if (Instance.registrations.TryGetValue(id, out var callback))".into(),
+                        format!("Action<{csharp_type}> callback = null;"),
+                        "lock (Instance.lockObj)".into(),
                         "{".into(),
-                        "    lock (Instance.lockObj)".into(),
+                        "    if (Instance.registrations.TryGetValue(id, out callback))".into(),
                         "    {".into(),
                         "        Instance.registrations.Remove(id);".into(),
                         "    }".into(),
-                        "    callback(result);".into(),
                         "}".into(),
+                        "callback?.Invoke(result);".into(),
                     ]),
                 },
             ],
+            finalizer: None,
             delegates: vec![CSharpDelegate {
                 visibility: Visibility::Public,
                 return_type: "void".into(),

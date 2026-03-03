@@ -168,6 +168,18 @@ impl CSharpRenderer {
             &c.delegates,
         );
 
+        // Finalizer (rendered between constructors and properties/methods sections)
+        if let Some(ref finalizer_lines) = c.finalizer {
+            self.blank();
+            let bare_name = c.name.split('<').next().unwrap_or(&c.name);
+            self.line(body, &format!("~{bare_name}()"));
+            self.line(body, "{");
+            for l in finalizer_lines {
+                self.line(body + 1, l);
+            }
+            self.line(body, "}");
+        }
+
         self.line(lv, "}");
     }
 
@@ -891,6 +903,7 @@ mod tests {
                     }],
                     body: MethodBody::Expression("_value = value".into()),
                 }],
+                finalizer: None,
                 methods: vec![],
                 delegates: vec![],
                 indexers: vec![],
@@ -945,6 +958,7 @@ mod tests {
                 fields: vec![],
                 properties: vec![],
                 constructors: vec![],
+                finalizer: None,
                 methods: vec![],
                 delegates: vec![CSharpDelegate {
                     visibility: Visibility::Public,
@@ -981,6 +995,7 @@ mod tests {
                 fields: vec![],
                 properties: vec![],
                 constructors: vec![],
+                finalizer: None,
                 methods: vec![],
                 delegates: vec![],
                 indexers: vec![CSharpIndexer {
@@ -1023,6 +1038,7 @@ mod tests {
                 fields: vec![],
                 properties: vec![],
                 constructors: vec![],
+                finalizer: None,
                 methods: vec![],
                 delegates: vec![],
                 indexers: vec![],
@@ -1047,6 +1063,7 @@ mod tests {
                 fields: vec![],
                 properties: vec![],
                 constructors: vec![],
+                finalizer: None,
                 methods: vec![],
                 delegates: vec![],
                 indexers: vec![],
@@ -1071,6 +1088,7 @@ mod tests {
                 fields: vec![],
                 properties: vec![],
                 constructors: vec![],
+                finalizer: None,
                 methods: vec![],
                 delegates: vec![],
                 indexers: vec![],
@@ -1330,6 +1348,7 @@ mod tests {
                     }],
                     body: MethodBody::Expression("_val = v".into()),
                 }],
+                finalizer: None,
                 methods: vec![CSharpMethod {
                     doc_lines: vec![],
                     attributes: vec![],

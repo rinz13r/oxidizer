@@ -59,7 +59,7 @@ impl drop_owned {
     #[unsafe(export_name = "drop_owned")]
     pub extern "C" fn call(owned: OwnedRaw) {
         unsafe {
-            if !owned.ptr.is_null() {
+            if !owned.ptr.is_null() && !owned.drop_fn.is_null() {
                 let dropper: unsafe extern "C" fn(*mut c_void) = std::mem::transmute(owned.drop_fn);
                 dropper(owned.ptr);
             }

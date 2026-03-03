@@ -191,7 +191,7 @@ impl CSharpGenerator {
             TypeKind::I64 => "long",
             TypeKind::F32 => "float",
             TypeKind::F64 => "double",
-            TypeKind::Bool => "bool",
+            TypeKind::Bool => "byte",
             TypeKind::Void => "void",
             TypeKind::Pointer => "IntPtr",
             TypeKind::Struct => rust_type.name(),
