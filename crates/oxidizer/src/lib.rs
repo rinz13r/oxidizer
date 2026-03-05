@@ -30,7 +30,7 @@ pub use oxidizer_macro::{ffi_function, ffi_type};
 
 // Re-export core types
 pub use oxidizer_core::{
-    FieldInfo, FunctionInfo, FunctionParameter, TypeInfo, TypeKind, ReflectFunction, ReflectType,
+    FieldInfo, FunctionInfo, FunctionParameter, Runtime, TypeInfo, TypeKind, ReflectFunction, ReflectType,
 };
 
 // Re-export registry

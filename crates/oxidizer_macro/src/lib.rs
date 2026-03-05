@@ -169,14 +169,22 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
     let is_async = input.sig.asyncness.is_some();
 
     // Parse the attribute to get the runtime parameter
-    let runtime_expr = if attr.is_empty() {
-        // Default to Handle::current() if no runtime is provided
-        quote! { tokio::runtime::Handle::current() }
+    let runtime_ident = if attr.is_empty() {
+        None
     } else {
-        // Parse the provided runtime expression and get its handle
         let runtime_tokens: proc_macro2::TokenStream = attr.into();
-        quote! { #runtime_tokens.handle() }
+        Some(runtime_tokens)
     };
+
+    // Async functions require a runtime identifier
+    if is_async && runtime_ident.is_none() {
+        return syn::Error::new(
+            Span::call_site(),
+            "async ffi_function requires a runtime identifier, e.g. #[ffi_function(RT)]",
+        )
+        .to_compile_error()
+        .into();
+    }
 
     // Validate — reject non-ident patterns early
     for arg in &input.sig.inputs {
@@ -260,6 +268,8 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
         c_fn_params.push(quote! { cb: extern "C" fn(u64, #return_type) });
 
+        let runtime_tokens = runtime_ident.unwrap();
+
         quote! {
             #[allow(non_camel_case_types)]
             #vis struct #fn_name;
@@ -273,13 +283,13 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
                 // Exported C function that takes id and callback
                 #[unsafe(export_name = #fn_name_str)]
                 pub extern "C" fn call(#(#c_fn_params),*) {
-                    // Use the provided runtime handle
-                    let rt = #runtime_expr;
-
-                    rt.spawn(async move {
-                        let result = Self::#fn_name_internal(#(#param_exprs),*).await;
-                        cb(id, result);
-                    });
+                    ::oxidizer::__private::core::Runtime::spawn(
+                        &*#runtime_tokens,
+                        ::std::boxed::Box::pin(async move {
+                            let result = Self::#fn_name_internal(#(#param_exprs),*).await;
+                            cb(id, result);
+                        }),
+                    );
                 }
             }
 

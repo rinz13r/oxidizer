@@ -1,8 +1,18 @@
 use derive_getters::Getters;
 use derive_new::new;
+use std::future::Future;
+use std::pin::Pin;
 
 pub mod impls;
 pub mod registry;
+
+/// A runtime-agnostic trait for spawning async tasks from FFI functions.
+///
+/// Implement this for your chosen async runtime. Oxidizer itself does not
+/// depend on any runtime crate — users provide the implementation.
+pub trait Runtime {
+    fn spawn(&self, fut: Pin<Box<dyn Future<Output = ()> + Send + 'static>>);
+}
 
 pub trait ReflectFunction {
     fn get_function_info() -> FunctionInfo;
