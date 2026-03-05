@@ -1,7 +1,8 @@
-examples/DotnetApp/bin
-examples/DotnetApp/obj
-examples/bindings-generator/src/Generated.cs
-examples/bindings-generator/src/Generated.py
-examples/bindings-generator/src/rust_lib.dll
-examples/bindings-generator/src/__pycache__/
 target/
+tests/e2e/bindings-generator/src/Generated.cs
+tests/e2e/bindings-generator/src/Generated.py
+tests/e2e/bindings-generator/src/rust_lib.dll
+tests/e2e/bindings-generator/src/__pycache__/
+tests/e2e/dotnet/bin/
+tests/e2e/dotnet/obj/
+tests/e2e/python/__pycache__/

@@ -8,7 +8,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 ctor = "0.6.1"
-oxidizer = { path = "../../crates/oxidizer" }
+oxidizer = { path = "../../../crates/oxidizer" }
 tokio = { version = "1", features = ["full"] }
 smol = "2"
 lazy_static = "1.4"

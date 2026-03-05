@@ -29,6 +29,6 @@ cargo build --workspace      # Builds everything including examples
 cargo test --workspace       # Run all tests
 ```
 
-## Examples
+## E2E Tests
 
-See `examples/CLAUDE.md` for the rust_lib -> bindings-generator -> DotnetApp workflow.
+See `tests/e2e/` — run with `./run_tests.ps1`. Contains `rust_lib` (Rust FFI library), `bindings-generator` (generates C#/Python bindings), and `dotnet`/`python` test projects.

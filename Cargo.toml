@@ -8,9 +8,9 @@ members = [
     "crates/oxidizer_pygen",
     "crates/oxidizer",
 
-    # Example/test crates
-    "examples/rust_lib",
-    "examples/bindings-generator"
+    # E2E test crates
+    "tests/e2e/rust_lib",
+    "tests/e2e/bindings-generator"
 ]
 
 default-members = [
