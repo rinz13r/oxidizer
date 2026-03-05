@@ -6,7 +6,7 @@ use syn::{Data, DeriveInput, Fields, ItemFn, parse_macro_input};
 /// A procedural macro to generate FFI type information for structs
 ///
 /// Usage:
-/// ```rust
+/// ```rust,ignore
 /// #[ffi_type]
 /// struct MyStruct {
 ///     field1: u32,
@@ -15,7 +15,7 @@ use syn::{Data, DeriveInput, Fields, ItemFn, parse_macro_input};
 /// ```
 ///
 /// For marker types (generates empty C# struct, wrapped with `Owned<T>` in Rust):
-/// ```rust
+/// ```rust,ignore
 /// #[ffi_type(marker)]
 /// struct MyMarkerType {
 ///     field1: u32,
@@ -129,7 +129,7 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// A procedural macro to generate FFI function wrappers
 ///
 /// Transforms a function like:
-/// ```rust
+/// ```rust,ignore
 /// #[ffi_function]
 /// fn add(x: u64, y: u64) -> FFITy {
 ///     FFITy { x, y }
@@ -137,7 +137,7 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 ///
 /// Into:
-/// ```rust
+/// ```rust,ignore
 /// struct add;
 ///
 /// impl add {
