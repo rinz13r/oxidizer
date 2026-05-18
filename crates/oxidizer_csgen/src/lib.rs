@@ -1,14 +1,14 @@
 use bon::Builder;
 use oxidizer_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
-use std::collections::HashMap;
 pub use oxidizer_utils::{
     FFI_REPR_OWNED, FFI_REPR_OWNED_SLICE, FFI_REPR_SLICE, FFI_REPR_SLICE_CALLBACK,
     FFI_REPR_SLICE_MUT, FFI_SLICE_RAW_TYPE_ID, META_FFI_REPR, META_RAW_TYPE_ID, META_TYPE_ID,
     OWNED_RAW_TYPE_ID, OWNED_SLICE_RAW_TYPE_ID,
 };
+use std::collections::HashMap;
 
-pub mod ir;
 mod builder;
+pub mod ir;
 mod renderer;
 
 /// Indentation style for generated code
@@ -68,7 +68,7 @@ impl FFIRepr {
 /// C# code generator with configurable output
 #[derive(Builder)]
 pub struct CSharpGenerator {
-    /// Name of the native library (e.g., "mylib.dll")
+    /// Name of the native library (e.g., "mylib")
     #[builder(into)]
     library_name: String,
     /// Optional namespace to wrap generated code in
@@ -237,9 +237,7 @@ mod tests {
     use oxidizer_core::{FunctionInfo, FunctionParameter, TypeInfo, TypeKind};
 
     fn default_generator() -> CSharpGenerator {
-        CSharpGenerator::builder()
-            .library_name("rust_lib.dll")
-            .build()
+        CSharpGenerator::builder().library_name("rust_lib").build()
     }
 
     #[test]
@@ -269,7 +267,7 @@ mod tests {
         registry.register_function_info(function);
         let output = generator.generate_csharp(&registry);
 
-        assert!(output.contains("[DllImport(\"rust_lib.dll\""));
+        assert!(output.contains("[DllImport(\"rust_lib\""));
         assert!(output.contains("public static extern ulong TestFunc(uint value)"));
     }
 
@@ -279,7 +277,12 @@ mod tests {
         let return_type = TypeInfo::new("u64".to_string(), vec![], TypeKind::U64, vec![], &[]);
         let param_type = TypeInfo::new("u32".to_string(), vec![], TypeKind::U32, vec![], &[]);
         let param = FunctionParameter::new("value".to_string(), param_type);
-        let function = FunctionInfo::new("test_async_func".to_string(), vec![param], return_type, true);
+        let function = FunctionInfo::new(
+            "test_async_func".to_string(),
+            vec![param],
+            return_type,
+            true,
+        );
 
         let mut registry = oxidizer_core::registry::Registry::new();
         registry.register_function_info(function);
@@ -294,7 +297,7 @@ mod tests {
     #[test]
     fn test_namespace_configuration() {
         let generator = CSharpGenerator::builder()
-            .library_name("test.dll")
+            .library_name("test")
             .namespace("MyCompany.Interop")
             .build();
 
@@ -308,7 +311,7 @@ mod tests {
     #[test]
     fn test_custom_bindings_class_name() {
         let generator = CSharpGenerator::builder()
-            .library_name("test.dll")
+            .library_name("test")
             .bindings_class_name("NativeMethods")
             .build();
 
@@ -322,7 +325,7 @@ mod tests {
     #[test]
     fn test_indent_style_spaces2() {
         let generator = CSharpGenerator::builder()
-            .library_name("test.dll")
+            .library_name("test")
             .indent_style(IndentStyle::Spaces2)
             .build();
 
@@ -336,7 +339,7 @@ mod tests {
     #[test]
     fn test_indent_style_tabs() {
         let generator = CSharpGenerator::builder()
-            .library_name("test.dll")
+            .library_name("test")
             .namespace("Test")
             .indent_style(IndentStyle::Tabs)
             .build();

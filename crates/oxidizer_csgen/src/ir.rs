@@ -458,18 +458,16 @@ mod tests {
         let sc = CSharpStaticClass {
             visibility: Visibility::Public,
             name: "Bindings".into(),
-            methods: vec![
-                CSharpMethod {
-                    doc_lines: vec![],
-                    attributes: vec!["[DllImport(\"lib\")]".into()],
-                    visibility: Visibility::Public,
-                    modifiers: vec![MethodModifier::Static, MethodModifier::Extern],
-                    return_type: "void".into(),
-                    name: "Init".into(),
-                    parameters: vec![],
-                    body: MethodBody::None,
-                },
-            ],
+            methods: vec![CSharpMethod {
+                doc_lines: vec![],
+                attributes: vec!["[DllImport(\"lib\")]".into()],
+                visibility: Visibility::Public,
+                modifiers: vec![MethodModifier::Static, MethodModifier::Extern],
+                return_type: "void".into(),
+                name: "Init".into(),
+                parameters: vec![],
+                body: MethodBody::None,
+            }],
         };
         assert_eq!(sc.name, "Bindings");
         assert_eq!(sc.methods.len(), 1);

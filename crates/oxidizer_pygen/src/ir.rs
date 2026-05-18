@@ -192,12 +192,10 @@ mod tests {
             doc_lines: vec!["Do something async.".into()],
             name: "my_async".into(),
             is_async: true,
-            parameters: vec![
-                PythonParam {
-                    name: "x".into(),
-                    annotation: Some("int".into()),
-                },
-            ],
+            parameters: vec![PythonParam {
+                name: "x".into(),
+                annotation: Some("int".into()),
+            }],
             return_annotation: Some("float".into()),
             body: vec!["return await something()".into()],
         };

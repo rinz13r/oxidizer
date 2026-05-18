@@ -58,7 +58,7 @@ fn main() {
         .register_type::<Point>()
         .register_function::<add_points>();
 
-    let cs_code = CSharpGenerator::generate_csharp(&registry, "my_lib.dll");
+    let cs_code = CSharpGenerator::generate_csharp(&registry, "my_lib");
     std::fs::write("Generated.cs", cs_code).unwrap();
 }
 ```

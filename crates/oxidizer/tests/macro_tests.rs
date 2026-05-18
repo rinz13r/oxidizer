@@ -24,7 +24,10 @@ pub struct StructWithDerives {
 fn marker_type_has_empty_fields() {
     let info = MarkerStruct::get_type_info();
     assert_eq!(info.name(), "MarkerStruct");
-    assert!(info.fields().is_empty(), "marker types should have empty fields");
+    assert!(
+        info.fields().is_empty(),
+        "marker types should have empty fields"
+    );
 }
 
 #[test]

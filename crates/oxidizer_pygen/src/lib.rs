@@ -1,14 +1,14 @@
 use bon::Builder;
 use oxidizer_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
-use std::collections::HashMap;
 pub use oxidizer_utils::{
     FFI_REPR_OWNED, FFI_REPR_OWNED_SLICE, FFI_REPR_SLICE, FFI_REPR_SLICE_CALLBACK,
     FFI_REPR_SLICE_MUT, FFI_SLICE_RAW_TYPE_ID, META_FFI_REPR, META_RAW_TYPE_ID, META_TYPE_ID,
     OWNED_RAW_TYPE_ID, OWNED_SLICE_RAW_TYPE_ID,
 };
+use std::collections::HashMap;
 
-pub mod ir;
 mod builder;
+pub mod ir;
 mod renderer;
 
 /// Indentation style for generated code
@@ -68,7 +68,7 @@ impl FFIRepr {
 /// Python code generator with configurable output
 #[derive(Builder)]
 pub struct PythonGenerator {
-    /// Name of the native library (e.g., "librust_lib.so")
+    /// Name of the native library file (e.g., "rust_lib.dll" or "librust_lib.so")
     #[builder(into)]
     library_name: String,
     /// Optional module docstring
@@ -242,9 +242,19 @@ mod tests {
     use super::*;
     use oxidizer_core::{FunctionInfo, FunctionParameter, TypeInfo, TypeKind};
 
+    fn native_library_filename() -> &'static str {
+        if cfg!(target_os = "windows") {
+            "rust_lib.dll"
+        } else if cfg!(target_os = "macos") {
+            "librust_lib.dylib"
+        } else {
+            "librust_lib.so"
+        }
+    }
+
     fn default_generator() -> PythonGenerator {
         PythonGenerator::builder()
-            .library_name("librust_lib.so")
+            .library_name(native_library_filename())
             .build()
     }
 
@@ -257,7 +267,7 @@ mod tests {
         assert!(output.contains("import ctypes"));
         assert!(output.contains("import asyncio"));
         assert!(output.contains("_lib = ctypes.CDLL("));
-        assert!(output.contains("librust_lib.so"));
+        assert!(output.contains(native_library_filename()));
         // Should have wrapper classes
         assert!(output.contains("class OwnedHandle:"));
         assert!(output.contains("class OwnedSliceHandle:"));
@@ -270,8 +280,7 @@ mod tests {
         let return_type = TypeInfo::new("u64".to_string(), vec![], TypeKind::U64, vec![], &[]);
         let param_type = TypeInfo::new("u32".to_string(), vec![], TypeKind::U32, vec![], &[]);
         let param = FunctionParameter::new("value".to_string(), param_type);
-        let function =
-            FunctionInfo::new("test_func".to_string(), vec![param], return_type, false);
+        let function = FunctionInfo::new("test_func".to_string(), vec![param], return_type, false);
 
         let mut registry = Registry::new();
         registry.register_function_info(function);
@@ -289,8 +298,12 @@ mod tests {
         let return_type = TypeInfo::new("u64".to_string(), vec![], TypeKind::U64, vec![], &[]);
         let param_type = TypeInfo::new("u32".to_string(), vec![], TypeKind::U32, vec![], &[]);
         let param = FunctionParameter::new("value".to_string(), param_type);
-        let function =
-            FunctionInfo::new("test_async_func".to_string(), vec![param], return_type, true);
+        let function = FunctionInfo::new(
+            "test_async_func".to_string(),
+            vec![param],
+            return_type,
+            true,
+        );
 
         let mut registry = Registry::new();
         registry.register_function_info(function);
@@ -309,15 +322,16 @@ mod tests {
     fn test_registrar_generation() {
         let generator = default_generator();
         let return_type = TypeInfo::new("f64".to_string(), vec![], TypeKind::F64, vec![], &[]);
-        let function =
-            FunctionInfo::new("do_async".to_string(), vec![], return_type, true);
+        let function = FunctionInfo::new("do_async".to_string(), vec![], return_type, true);
 
         let mut registry = Registry::new();
         registry.register_function_info(function);
         let output = generator.generate_python(&registry);
 
         assert!(output.contains("class _Registrar_c_double:"));
-        assert!(output.contains("_CallbackType_c_double = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.c_double)"));
+        assert!(output.contains(
+            "_CallbackType_c_double = ctypes.CFUNCTYPE(None, ctypes.c_uint64, ctypes.c_double)"
+        ));
         assert!(output.contains("self._registrations = {}"));
         assert!(output.contains("self._lock = threading.Lock()"));
     }
@@ -325,7 +339,7 @@ mod tests {
     #[test]
     fn test_module_docstring() {
         let generator = PythonGenerator::builder()
-            .library_name("test.so")
+            .library_name("test")
             .module_docstring("My bindings module.")
             .build();
 
@@ -338,7 +352,7 @@ mod tests {
     #[test]
     fn test_indent_style_spaces2() {
         let generator = PythonGenerator::builder()
-            .library_name("test.so")
+            .library_name("test")
             .indent_style(IndentStyle::Spaces2)
             .build();
 
@@ -352,7 +366,7 @@ mod tests {
     #[test]
     fn test_indent_style_tabs() {
         let generator = PythonGenerator::builder()
-            .library_name("test.so")
+            .library_name("test")
             .indent_style(IndentStyle::Tabs)
             .build();
 
@@ -414,17 +428,17 @@ mod tests {
         let return_type = TypeInfo::new("u64".to_string(), vec![], TypeKind::U64, vec![], &[]);
         let param_type = TypeInfo::new("u32".to_string(), vec![], TypeKind::U32, vec![], &[]);
         let param = FunctionParameter::new("value".to_string(), param_type);
-        let function =
-            FunctionInfo::new("test_func".to_string(), vec![param], return_type, false);
+        let function = FunctionInfo::new("test_func".to_string(), vec![param], return_type, false);
 
         let mut registry = Registry::new();
         registry.register_function_info(function);
         let ir = generator.build_ir(&registry);
 
         // Should have wrapper classes + FFI declaration + wrapper function
-        let has_function = ir.items.iter().any(|item| {
-            matches!(item, ir::PythonItem::Function(f) if f.name == "test_func")
-        });
+        let has_function = ir
+            .items
+            .iter()
+            .any(|item| matches!(item, ir::PythonItem::Function(f) if f.name == "test_func"));
         assert!(has_function);
     }
 }

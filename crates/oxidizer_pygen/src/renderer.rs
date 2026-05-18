@@ -122,10 +122,7 @@ impl PythonRenderer {
         if c.bases.is_empty() {
             self.line(0, &format!("class {}:", c.name));
         } else {
-            self.line(
-                0,
-                &format!("class {}({}):", c.name, c.bases.join(", ")),
-            );
+            self.line(0, &format!("class {}({}):", c.name, c.bases.join(", ")));
         }
 
         // Docstring
@@ -170,7 +167,10 @@ impl PythonRenderer {
             .map(|r| format!(" -> {r}"))
             .unwrap_or_default();
 
-        self.line(0, &format!("{kw} {}{ret}:", params_with_name(&f.name, &params)));
+        self.line(
+            0,
+            &format!("{kw} {}{ret}:", params_with_name(&f.name, &params)),
+        );
 
         // Docstring
         if !f.doc_lines.is_empty() {
@@ -293,9 +293,7 @@ mod tests {
         let file = PythonFile {
             imports: vec![],
             module_docstring: None,
-            module_statements: vec![
-                "_lib = ctypes.CDLL(\"libfoo.so\")".into(),
-            ],
+            module_statements: vec!["_lib = ctypes.CDLL(\"libfoo.so\")".into()],
             items: vec![],
         };
         let out = render(&file, &IndentStyle::Spaces4);
@@ -402,10 +400,7 @@ mod tests {
                         },
                     ],
                     return_annotation: None,
-                    body: vec![
-                        "self._raw = raw".into(),
-                        "self._disposed = False".into(),
-                    ],
+                    body: vec!["self._raw = raw".into(), "self._disposed = False".into()],
                 }],
             })],
         };

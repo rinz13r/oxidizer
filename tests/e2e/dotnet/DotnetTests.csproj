@@ -8,17 +8,20 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <ItemGroup>
-    <None Include="..\..\..\target\debug\rust_lib.dll" Condition=" '$(Configuration)' == 'Debug' ">
-      <Link>rust_lib.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+  <PropertyGroup>
+    <NativeLibName Condition="$([MSBuild]::IsOSPlatform('Windows'))">rust_lib.dll</NativeLibName>
+    <NativeLibName Condition="$([MSBuild]::IsOSPlatform('Linux'))">librust_lib.so</NativeLibName>
+    <NativeLibName Condition="$([MSBuild]::IsOSPlatform('OSX'))">librust_lib.dylib</NativeLibName>
+  </PropertyGroup>
 
-    <None Include="..\..\..\target\release\rust_lib.dll" Condition=" '$(Configuration)' == 'Release' ">
-      <Link>rust_lib.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+  <ItemGroup>
+    <NativeLibrary Include="..\..\..\target\debug\$(NativeLibName)" Condition="Exists('..\..\..\target\debug\$(NativeLibName)')" />
+    <NativeLibrary Include="..\..\..\target\release\$(NativeLibName)" Condition="Exists('..\..\..\target\release\$(NativeLibName)')" />
   </ItemGroup>
+
+  <Target Name="CopyNativeLibraries" AfterTargets="Build">
+    <Copy SourceFiles="@(NativeLibrary)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)..\bindings-generator\src\Generated.cs" />

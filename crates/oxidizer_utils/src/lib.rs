@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 
 use oxidizer_core::{
-    FieldInfo, FunctionInfo, FunctionParameter, TypeInfo, TypeKind, ReflectFunction, ReflectType,
+    FieldInfo, FunctionInfo, FunctionParameter, ReflectFunction, ReflectType, TypeInfo, TypeKind,
 };
 
 // Note: We manually implement ReflectType/ReflectFunction here instead of using the macros
@@ -39,8 +39,14 @@ pub struct OwnedRaw {
 impl ReflectType for OwnedRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr".to_string(), <*mut c_void as ReflectType>::get_type_info()),
-            FieldInfo::new("drop_fn".to_string(), <*const c_void as ReflectType>::get_type_info()),
+            FieldInfo::new(
+                "ptr".to_string(),
+                <*mut c_void as ReflectType>::get_type_info(),
+            ),
+            FieldInfo::new(
+                "drop_fn".to_string(),
+                <*const c_void as ReflectType>::get_type_info(),
+            ),
         ];
         TypeInfo::new(
             OWNED_RAW_NAME.to_string(),
@@ -71,7 +77,10 @@ impl ReflectFunction for drop_owned {
     fn get_function_info() -> FunctionInfo {
         FunctionInfo::new(
             "drop_owned".to_string(),
-            vec![FunctionParameter::new("owned".to_string(), OwnedRaw::get_type_info())],
+            vec![FunctionParameter::new(
+                "owned".to_string(),
+                OwnedRaw::get_type_info(),
+            )],
             TypeInfo::new("()".to_string(), Vec::new(), TypeKind::Void, vec![], &[]),
             false,
         )
@@ -344,7 +353,10 @@ pub struct FFISliceRaw {
 impl ReflectType for FFISliceRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr".to_string(), <*const c_void as ReflectType>::get_type_info()),
+            FieldInfo::new(
+                "ptr".to_string(),
+                <*const c_void as ReflectType>::get_type_info(),
+            ),
             FieldInfo::new("len".to_string(), <usize as ReflectType>::get_type_info()),
         ];
         TypeInfo::new(
@@ -458,11 +470,23 @@ pub struct OwnedSliceRaw {
 impl ReflectType for OwnedSliceRaw {
     fn get_type_info() -> TypeInfo {
         let fields = vec![
-            FieldInfo::new("ptr".to_string(), <*mut c_void as ReflectType>::get_type_info()),
+            FieldInfo::new(
+                "ptr".to_string(),
+                <*mut c_void as ReflectType>::get_type_info(),
+            ),
             FieldInfo::new("len".to_string(), <usize as ReflectType>::get_type_info()),
-            FieldInfo::new("capacity".to_string(), <usize as ReflectType>::get_type_info()),
-            FieldInfo::new("element_size".to_string(), <usize as ReflectType>::get_type_info()),
-            FieldInfo::new("drop_fn".to_string(), <*const c_void as ReflectType>::get_type_info()),
+            FieldInfo::new(
+                "capacity".to_string(),
+                <usize as ReflectType>::get_type_info(),
+            ),
+            FieldInfo::new(
+                "element_size".to_string(),
+                <usize as ReflectType>::get_type_info(),
+            ),
+            FieldInfo::new(
+                "drop_fn".to_string(),
+                <*const c_void as ReflectType>::get_type_info(),
+            ),
         ];
         TypeInfo::new(
             OWNED_SLICE_RAW_NAME.to_string(),
@@ -498,7 +522,10 @@ impl ReflectFunction for drop_owned_slice {
     fn get_function_info() -> FunctionInfo {
         FunctionInfo::new(
             "drop_owned_slice".to_string(),
-            vec![FunctionParameter::new("os".to_string(), OwnedSliceRaw::get_type_info())],
+            vec![FunctionParameter::new(
+                "os".to_string(),
+                OwnedSliceRaw::get_type_info(),
+            )],
             TypeInfo::new("()".to_string(), Vec::new(), TypeKind::Void, vec![], &[]),
             false,
         )

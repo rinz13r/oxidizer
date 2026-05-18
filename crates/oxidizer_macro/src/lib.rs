@@ -89,7 +89,11 @@ pub fn ffi_type(attr: TokenStream, item: TokenStream) -> TokenStream {
                 quote! { &[] }
             };
 
-            let repr_attr = if is_marker { quote! {} } else { quote! { #[repr(C)] } };
+            let repr_attr = if is_marker {
+                quote! {}
+            } else {
+                quote! { #[repr(C)] }
+            };
             let user_attrs = &input.attrs;
 
             quote! {
@@ -206,8 +210,12 @@ pub fn ffi_function(attr: TokenStream, item: TokenStream) -> TokenStream {
         .inputs
         .iter()
         .filter_map(|arg| {
-            let syn::FnArg::Typed(pat_type) = arg else { return None };
-            let syn::Pat::Ident(pat_ident) = &*pat_type.pat else { unreachable!() };
+            let syn::FnArg::Typed(pat_type) = arg else {
+                return None;
+            };
+            let syn::Pat::Ident(pat_ident) = &*pat_type.pat else {
+                unreachable!()
+            };
             Some((pat_ident.ident.to_string(), &*pat_type.ty))
         })
         .unzip();

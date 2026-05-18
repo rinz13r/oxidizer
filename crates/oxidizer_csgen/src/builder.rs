@@ -1,7 +1,6 @@
 use crate::ir::*;
 use crate::{
-    CSharpGenerator, FFIRepr, FFI_SLICE_RAW_TYPE_ID, OWNED_RAW_TYPE_ID,
-    OWNED_SLICE_RAW_TYPE_ID,
+    CSharpGenerator, FFI_SLICE_RAW_TYPE_ID, FFIRepr, OWNED_RAW_TYPE_ID, OWNED_SLICE_RAW_TYPE_ID,
 };
 use oxidizer_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
 use std::collections::HashMap;
@@ -126,10 +125,7 @@ impl CSharpGenerator {
     // OwnedHandle<T> wrapper class
     // ------------------------------------------------------------------
 
-    fn build_owned_wrapper_class(
-        &self,
-        type_id_map: &HashMap<String, TypeInfo>,
-    ) -> CSharpItem {
+    fn build_owned_wrapper_class(&self, type_id_map: &HashMap<String, TypeInfo>) -> CSharpItem {
         let raw_type_name = type_id_map
             .get(OWNED_RAW_TYPE_ID)
             .map(|t| t.name().to_string())
@@ -589,9 +585,7 @@ impl CSharpGenerator {
                     return_type: "ulong".into(),
                     name: "Register".into(),
                     parameters: vec![CSharpParam {
-                        type_name: format!(
-                            "Action<ReadOnlySpan<{csharp_element_type}>>"
-                        ),
+                        type_name: format!("Action<ReadOnlySpan<{csharp_element_type}>>"),
                         name: "callback".into(),
                     }],
                     body: MethodBody::Block(vec![
@@ -855,9 +849,7 @@ impl CSharpGenerator {
                 return_type: String::new(),
                 name: marker_name,
                 parameters: vec![],
-                body: MethodBody::Block(vec![
-                    "throw new NotSupportedException();".into(),
-                ]),
+                body: MethodBody::Block(vec!["throw new NotSupportedException();".into()]),
             }],
             methods: vec![],
             indexers: vec![],
@@ -982,7 +974,8 @@ impl CSharpGenerator {
                 doc_lines: vec![],
                 attributes: vec![format!(
                     "[DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]",
-                    self.library_name, function.name()
+                    self.library_name,
+                    function.name()
                 )],
                 visibility: Visibility::Private,
                 modifiers: vec![MethodModifier::Static, MethodModifier::Extern],
@@ -1056,12 +1049,10 @@ impl CSharpGenerator {
                 }
                 _ => {
                     if raw_return_type == "void" {
-                        body_lines
-                            .push(format!("{function_name}Internal({call_args_str});"));
+                        body_lines.push(format!("{function_name}Internal({call_args_str});"));
                     } else {
-                        body_lines.push(format!(
-                            "return {function_name}Internal({call_args_str});"
-                        ));
+                        body_lines
+                            .push(format!("return {function_name}Internal({call_args_str});"));
                     }
                 }
             }
@@ -1085,7 +1076,8 @@ impl CSharpGenerator {
                 doc_lines: vec![],
                 attributes: vec![format!(
                     "[DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]",
-                    self.library_name, function.name()
+                    self.library_name,
+                    function.name()
                 )],
                 visibility: Visibility::Public,
                 modifiers: vec![MethodModifier::Static, MethodModifier::Extern],
@@ -1137,9 +1129,7 @@ impl CSharpGenerator {
             "var tcs = new TaskCompletionSource<{raw_return_type}>();"
         ));
         body_lines.push(String::new());
-        body_lines.push(format!(
-            "var id = {registrar_class}.Instance.Register("
-        ));
+        body_lines.push(format!("var id = {registrar_class}.Instance.Register("));
         body_lines.push(format!("    ({raw_return_type} res) =>"));
         body_lines.push("    {".into());
         body_lines.push("        tcs.SetResult(res);".into());
@@ -1210,7 +1200,8 @@ impl CSharpGenerator {
             doc_lines: vec![],
             attributes: vec![format!(
                 "[DllImport(\"{}\", EntryPoint = \"{}\", CallingConvention = CallingConvention.Cdecl)]",
-                self.library_name, function.name()
+                self.library_name,
+                function.name()
             )],
             visibility: Visibility::Private,
             modifiers: vec![MethodModifier::Static, MethodModifier::Extern],

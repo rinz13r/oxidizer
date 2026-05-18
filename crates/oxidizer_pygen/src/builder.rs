@@ -1,6 +1,6 @@
 use crate::ir::*;
 use crate::{
-    FFIRepr, FFI_SLICE_RAW_TYPE_ID, OWNED_RAW_TYPE_ID, OWNED_SLICE_RAW_TYPE_ID, PythonGenerator,
+    FFI_SLICE_RAW_TYPE_ID, FFIRepr, OWNED_RAW_TYPE_ID, OWNED_SLICE_RAW_TYPE_ID, PythonGenerator,
 };
 use oxidizer_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
 use std::collections::HashMap;
@@ -197,10 +197,7 @@ impl PythonGenerator {
                         },
                     ],
                     return_annotation: None,
-                    body: vec![
-                        "self._raw = raw".into(),
-                        "self._disposed = False".into(),
-                    ],
+                    body: vec!["self._raw = raw".into(), "self._disposed = False".into()],
                 },
                 PythonMethod {
                     decorators: vec![],
@@ -333,7 +330,8 @@ impl PythonGenerator {
                         "    raise RuntimeError(\"OwnedSliceHandle has been disposed\")".into(),
                         "if index < 0 or index >= self._raw.len:".into(),
                         "    raise IndexError(\"index out of range\")".into(),
-                        "arr = ctypes.cast(self._raw.ptr, ctypes.POINTER(self._element_type))".into(),
+                        "arr = ctypes.cast(self._raw.ptr, ctypes.POINTER(self._element_type))"
+                            .into(),
                         "return arr[index]".into(),
                     ],
                 },
@@ -803,8 +801,7 @@ impl PythonGenerator {
             for param in function.parameters() {
                 argtypes.push(self.rust_type_to_python_ctypes(param.ty(), type_id_map));
             }
-            let callback_type =
-                self.get_callback_type_name(function.return_type(), type_id_map);
+            let callback_type = self.get_callback_type_name(function.return_type(), type_id_map);
             argtypes.push(callback_type);
             lines.push(format!("_lib.{fname}.argtypes = [{}]", argtypes.join(", ")));
             lines.push(format!("_lib.{fname}.restype = None"));
@@ -871,7 +868,8 @@ impl PythonGenerator {
             .collect();
 
         // Build return annotation
-        let return_annotation = self.python_public_return_annotation(function.return_type(), type_id_map);
+        let return_annotation =
+            self.python_public_return_annotation(function.return_type(), type_id_map);
 
         let needs_wrapper = matches!(return_repr, FFIRepr::Owned | FFIRepr::OwnedSlice)
             || has_owned_params
@@ -884,7 +882,8 @@ impl PythonGenerator {
             for param in function.parameters() {
                 if FFIRepr::from_type_info(param.ty()) == FFIRepr::SliceCallback {
                     let pname = param.name();
-                    let element_type_name = self.get_generic_element_python_name(param.ty(), type_id_map);
+                    let element_type_name =
+                        self.get_generic_element_python_name(param.ty(), type_id_map);
                     let registrar = format!("SliceCallbackRegistrar_{element_type_name}");
                     body.push(format!(
                         "{pname}_id = {registrar}.instance().register({pname})"
@@ -915,7 +914,8 @@ impl PythonGenerator {
                     body.push(format!("return OwnedHandle(_lib.{fname}({args_str}))"));
                 }
                 FFIRepr::OwnedSlice => {
-                    let element_ctypes_type = self.get_generic_element_python_ctypes(function.return_type(), type_id_map);
+                    let element_ctypes_type =
+                        self.get_generic_element_python_ctypes(function.return_type(), type_id_map);
                     body.push(format!(
                         "return OwnedSliceHandle(_lib.{fname}({args_str}), {element_ctypes_type})"
                     ));
@@ -976,24 +976,21 @@ impl PythonGenerator {
             })
             .collect();
 
-        let return_annotation = self.python_public_return_annotation(function.return_type(), type_id_map);
+        let return_annotation =
+            self.python_public_return_annotation(function.return_type(), type_id_map);
 
         let mut body = Vec::new();
         body.push("loop = asyncio.get_running_loop()".into());
-        body.push(format!(
-            "registrar = {registrar_class}.instance()"
-        ));
+        body.push(format!("registrar = {registrar_class}.instance()"));
         body.push("cb_id, future = registrar.register(loop)".into());
 
         // Call FFI: _lib.func(cb_id, ...params, registrar.callback)
         let param_names: Vec<String> = function
             .parameters()
             .iter()
-            .map(|p| {
-                match FFIRepr::from_type_info(p.ty()) {
-                    FFIRepr::Owned => format!("{}._raw", p.name()),
-                    _ => p.name().to_string(),
-                }
+            .map(|p| match FFIRepr::from_type_info(p.ty()) {
+                FFIRepr::Owned => format!("{}._raw", p.name()),
+                _ => p.name().to_string(),
             })
             .collect();
         let all_args = std::iter::once("cb_id".to_string())
@@ -1044,9 +1041,7 @@ impl PythonGenerator {
             FFIRepr::OwnedSlice => Some("OwnedSliceHandle".into()),
             FFIRepr::Slice | FFIRepr::SliceMut => Some("SliceHandle".into()),
             FFIRepr::SliceCallback => Some("Callable".into()),
-            FFIRepr::Direct => Some(
-                self.rust_type_to_python_annotation(type_info, type_id_map),
-            ),
+            FFIRepr::Direct => Some(self.rust_type_to_python_annotation(type_info, type_id_map)),
         }
     }
 

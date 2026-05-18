@@ -2,17 +2,27 @@ import sys
 import os
 import shutil
 
+
+def _native_library_filename(base_name: str) -> str:
+    if sys.platform.startswith("win"):
+        return f"{base_name}.dll"
+    if sys.platform == "darwin":
+        return f"lib{base_name}.dylib"
+    return f"lib{base_name}.so"
+
+
 # Resolve paths relative to this file
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.normpath(os.path.join(_HERE, "..", "..", ".."))
 _BINDINGS_DIR = os.path.join(_REPO_ROOT, "tests", "e2e", "bindings-generator", "src")
+_LIBRARY_FILENAME = _native_library_filename("rust_lib")
 
-# Copy rust_lib.dll next to Generated.py so ctypes.CDLL can find it
+# Copy the platform native library next to Generated.py so ctypes.CDLL can find it
 _DLL_CANDIDATES = [
-    os.path.join(_REPO_ROOT, "target", "debug", "rust_lib.dll"),
-    os.path.join(_REPO_ROOT, "target", "release", "rust_lib.dll"),
+    os.path.join(_REPO_ROOT, "target", "debug", _LIBRARY_FILENAME),
+    os.path.join(_REPO_ROOT, "target", "release", _LIBRARY_FILENAME),
 ]
-_DLL_DEST = os.path.join(_BINDINGS_DIR, "rust_lib.dll")
+_DLL_DEST = os.path.join(_BINDINGS_DIR, _LIBRARY_FILENAME)
 
 for _candidate in _DLL_CANDIDATES:
     if os.path.exists(_candidate):
@@ -20,7 +30,7 @@ for _candidate in _DLL_CANDIDATES:
         break
 else:
     raise RuntimeError(
-        "rust_lib.dll not found. Run 'cargo build -p rust_lib' first."
+        f"{_LIBRARY_FILENAME} not found. Run 'cargo build -p rust_lib' first."
     )
 
 # Add bindings directory to sys.path so `import Generated` works

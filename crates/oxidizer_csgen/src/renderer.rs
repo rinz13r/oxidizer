@@ -1,5 +1,5 @@
-use crate::ir::*;
 use crate::IndentStyle;
+use crate::ir::*;
 
 pub(crate) fn render(file: &CSharpFile, indent_style: &IndentStyle) -> String {
     let base = if file.namespace.is_some() { 1 } else { 0 };
@@ -118,7 +118,7 @@ impl CSharpRenderer {
             &s.methods,
             &s.indexers,
             &s.constructors,
-            &[],  // no delegates
+            &[], // no delegates
         );
 
         self.line(lv, "}");
@@ -312,7 +312,10 @@ impl CSharpRenderer {
             .as_ref()
             .map(|v| format!(" = {v}"))
             .unwrap_or_default();
-        self.line(lv, &format!("{vis}{st}{ro}{} {}{init};", f.type_name, f.name));
+        self.line(
+            lv,
+            &format!("{vis}{st}{ro}{} {}{init};", f.type_name, f.name),
+        );
     }
 
     fn render_property(&mut self, p: &CSharpProperty, lv: usize) {
@@ -320,7 +323,10 @@ impl CSharpRenderer {
         let st = if p.is_static { "static " } else { "" };
         match &p.body {
             PropertyBody::Expression(expr) => {
-                self.line(lv, &format!("{vis}{st}{} {} => {expr};", p.type_name, p.name));
+                self.line(
+                    lv,
+                    &format!("{vis}{st}{} {} => {expr};", p.type_name, p.name),
+                );
             }
             PropertyBody::GetterBody(lines) => {
                 self.line(lv, &format!("{vis}{st}{} {}", p.type_name, p.name));
@@ -629,7 +635,9 @@ mod tests {
             })],
         };
         let out = render(&file, &IndentStyle::Spaces4);
-        assert!(out.contains("/// <summary>\n/// My documentation.\n/// </summary>\npublic struct Foo"));
+        assert!(
+            out.contains("/// <summary>\n/// My documentation.\n/// </summary>\npublic struct Foo")
+        );
     }
 
     // ------------------------------------------------------------------
@@ -776,9 +784,7 @@ mod tests {
                     is_static: false,
                     type_name: "string".into(),
                     name: "Name".into(),
-                    body: PropertyBody::GetterBody(vec![
-                        "return _name;".into(),
-                    ]),
+                    body: PropertyBody::GetterBody(vec!["return _name;".into()]),
                 }],
                 constructors: vec![],
                 methods: vec![],
@@ -809,8 +815,14 @@ mod tests {
                     return_type: "void".into(),
                     name: "DoStuff".into(),
                     parameters: vec![
-                        CSharpParam { type_name: "int".into(), name: "a".into() },
-                        CSharpParam { type_name: "string".into(), name: "b".into() },
+                        CSharpParam {
+                            type_name: "int".into(),
+                            name: "a".into(),
+                        },
+                        CSharpParam {
+                            type_name: "string".into(),
+                            name: "b".into(),
+                        },
                     ],
                     body: MethodBody::Block(vec![
                         "Console.WriteLine(a);".into(),
@@ -841,8 +853,14 @@ mod tests {
                     return_type: "int".into(),
                     name: "Add".into(),
                     parameters: vec![
-                        CSharpParam { type_name: "int".into(), name: "a".into() },
-                        CSharpParam { type_name: "int".into(), name: "b".into() },
+                        CSharpParam {
+                            type_name: "int".into(),
+                            name: "a".into(),
+                        },
+                        CSharpParam {
+                            type_name: "int".into(),
+                            name: "b".into(),
+                        },
                     ],
                     body: MethodBody::Expression("a + b".into()),
                 }],
@@ -861,12 +879,8 @@ mod tests {
                 visibility: Visibility::Public,
                 name: "Bindings".into(),
                 methods: vec![CSharpMethod {
-                    doc_lines: vec![
-                        "/// <summary>Does a thing.</summary>".into(),
-                    ],
-                    attributes: vec![
-                        "[DllImport(\"lib.dll\")]".into(),
-                    ],
+                    doc_lines: vec!["/// <summary>Does a thing.</summary>".into()],
+                    attributes: vec!["[DllImport(\"lib.dll\")]".into()],
                     visibility: Visibility::Public,
                     modifiers: vec![MethodModifier::Static, MethodModifier::Extern],
                     return_type: "void".into(),
@@ -974,8 +988,14 @@ mod tests {
                     return_type: "void".into(),
                     name: "CallbackDelegate".into(),
                     parameters: vec![
-                        CSharpParam { type_name: "ulong".into(), name: "id".into() },
-                        CSharpParam { type_name: "ulong".into(), name: "result".into() },
+                        CSharpParam {
+                            type_name: "ulong".into(),
+                            name: "id".into(),
+                        },
+                        CSharpParam {
+                            type_name: "ulong".into(),
+                            name: "result".into(),
+                        },
                     ],
                 }],
                 indexers: vec![],
@@ -1314,12 +1334,18 @@ mod tests {
         let idx_field = out.find("public int X;").unwrap();
         let idx_prop = out.find("public int Y =>").unwrap();
         let between = &out[idx_field..idx_prop];
-        assert!(between.contains("\n\n"), "Expected blank line between fields and properties");
+        assert!(
+            between.contains("\n\n"),
+            "Expected blank line between fields and properties"
+        );
 
         // Blank line between properties and methods
         let idx_method = out.find("public void Reset()").unwrap();
         let between2 = &out[idx_prop..idx_method];
-        assert!(between2.contains("\n\n"), "Expected blank line between properties and methods");
+        assert!(
+            between2.contains("\n\n"),
+            "Expected blank line between properties and methods"
+        );
     }
 
     #[test]
@@ -1398,7 +1424,9 @@ mod tests {
 
         // Verify ordering: fields -> delegates -> constructors -> properties -> methods -> indexers
         let idx_field = out.find("private int _val;").unwrap();
-        let idx_delegate = out.find("public delegate void OnChange(int newVal);").unwrap();
+        let idx_delegate = out
+            .find("public delegate void OnChange(int newVal);")
+            .unwrap();
         let idx_ctor = out.find("public Full(int v)").unwrap();
         let idx_prop = out.find("public int Val =>").unwrap();
         let idx_method = out.find("public void Clear()").unwrap();
@@ -1453,7 +1481,10 @@ mod tests {
         let idx_first = out.find("First()").unwrap();
         let idx_second = out.find("Second()").unwrap();
         let between = &out[idx_first..idx_second];
-        assert!(between.contains("\n\n"), "Expected blank line between static class methods");
+        assert!(
+            between.contains("\n\n"),
+            "Expected blank line between static class methods"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -1550,9 +1581,18 @@ mod tests {
                     return_type: "int".into(),
                     name: "Multi".into(),
                     parameters: vec![
-                        CSharpParam { type_name: "int".into(), name: "a".into() },
-                        CSharpParam { type_name: "float".into(), name: "b".into() },
-                        CSharpParam { type_name: "IntPtr".into(), name: "c".into() },
+                        CSharpParam {
+                            type_name: "int".into(),
+                            name: "a".into(),
+                        },
+                        CSharpParam {
+                            type_name: "float".into(),
+                            name: "b".into(),
+                        },
+                        CSharpParam {
+                            type_name: "IntPtr".into(),
+                            name: "c".into(),
+                        },
                     ],
                     body: MethodBody::None,
                 }],
