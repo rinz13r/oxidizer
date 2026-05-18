@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 oxidizer_core = { path = "../oxidizer_core" }
+oxidizer_utils = { path = "../oxidizer_utils" }
 bon = "3"

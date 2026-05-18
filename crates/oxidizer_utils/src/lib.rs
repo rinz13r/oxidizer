@@ -14,21 +14,21 @@ const OWNED_SLICE_RAW_NAME: &str = "OwnedSliceRawHandle";
 const FFI_SLICE_RAW_NAME: &str = "FFISliceRaw";
 
 // Constants for type IDs (used in metadata to link wrapper types to raw types)
-const OWNED_RAW_TYPE_ID: &str = "owned_raw";
-const OWNED_SLICE_RAW_TYPE_ID: &str = "owned_slice_raw";
-const FFI_SLICE_RAW_TYPE_ID: &str = "ffi_slice_raw";
+pub const OWNED_RAW_TYPE_ID: &str = "owned_raw";
+pub const OWNED_SLICE_RAW_TYPE_ID: &str = "owned_slice_raw";
+pub const FFI_SLICE_RAW_TYPE_ID: &str = "ffi_slice_raw";
 
 // Constants for metadata keys
-const META_TYPE_ID: &str = "type_id";
-const META_RAW_TYPE_ID: &str = "raw_type_id";
-const META_FFI_REPR: &str = "ffi_repr";
+pub const META_TYPE_ID: &str = "type_id";
+pub const META_RAW_TYPE_ID: &str = "raw_type_id";
+pub const META_FFI_REPR: &str = "ffi_repr";
 
 // Constants for FFI representation values
-const FFI_REPR_OWNED: &str = "owned";
-const FFI_REPR_OWNED_SLICE: &str = "owned_slice";
-const FFI_REPR_SLICE: &str = "slice";
-const FFI_REPR_SLICE_MUT: &str = "slice_mut";
-const FFI_REPR_SLICE_CALLBACK: &str = "slice_callback";
+pub const FFI_REPR_OWNED: &str = "owned";
+pub const FFI_REPR_OWNED_SLICE: &str = "owned_slice";
+pub const FFI_REPR_SLICE: &str = "slice";
+pub const FFI_REPR_SLICE_MUT: &str = "slice_mut";
+pub const FFI_REPR_SLICE_CALLBACK: &str = "slice_callback";
 
 #[repr(C)]
 pub struct OwnedRaw {

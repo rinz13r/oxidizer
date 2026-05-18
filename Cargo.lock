@@ -476,6 +476,7 @@ version = "0.1.0"
 dependencies = [
  "bon",
  "oxidizer_core",
+ "oxidizer_utils",
 ]
 
 [[package]]
@@ -494,6 +495,7 @@ version = "0.1.0"
 dependencies = [
  "bon",
  "oxidizer_core",
+ "oxidizer_utils",
 ]
 
 [[package]]

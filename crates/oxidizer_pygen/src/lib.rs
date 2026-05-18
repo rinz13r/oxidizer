@@ -1,27 +1,15 @@
 use bon::Builder;
 use oxidizer_core::{FunctionInfo, TypeInfo, TypeKind, registry::Registry};
 use std::collections::HashMap;
+pub use oxidizer_utils::{
+    FFI_REPR_OWNED, FFI_REPR_OWNED_SLICE, FFI_REPR_SLICE, FFI_REPR_SLICE_CALLBACK,
+    FFI_REPR_SLICE_MUT, FFI_SLICE_RAW_TYPE_ID, META_FFI_REPR, META_RAW_TYPE_ID, META_TYPE_ID,
+    OWNED_RAW_TYPE_ID, OWNED_SLICE_RAW_TYPE_ID,
+};
 
 pub mod ir;
 mod builder;
 mod renderer;
-
-// Constants for type IDs (must match oxidizer_utils)
-const OWNED_RAW_TYPE_ID: &str = "owned_raw";
-const OWNED_SLICE_RAW_TYPE_ID: &str = "owned_slice_raw";
-const FFI_SLICE_RAW_TYPE_ID: &str = "ffi_slice_raw";
-
-// Constants for metadata keys (must match oxidizer_utils)
-const META_TYPE_ID: &str = "type_id";
-const META_RAW_TYPE_ID: &str = "raw_type_id";
-const META_FFI_REPR: &str = "ffi_repr";
-
-// Constants for FFI representation values (must match oxidizer_utils)
-const FFI_REPR_OWNED: &str = "owned";
-const FFI_REPR_OWNED_SLICE: &str = "owned_slice";
-const FFI_REPR_SLICE: &str = "slice";
-const FFI_REPR_SLICE_MUT: &str = "slice_mut";
-const FFI_REPR_SLICE_CALLBACK: &str = "slice_callback";
 
 /// Indentation style for generated code
 #[derive(Debug, Clone, Default)]
