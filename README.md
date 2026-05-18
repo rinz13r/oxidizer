@@ -1,33 +1,40 @@
 # Oxidizer
 
-Rust-to-C# FFI binding generator. Annotate Rust types and functions with proc macros, then generate type-safe C# P/Invoke bindings automatically.
+Language-agnostic Rust FFI binding generator.
+Annotate Rust types/functions once, collect metadata in a `Registry`, then generate bindings for one or more target languages.
+
+First-party generators in this repository:
+
+- **C#** (`oxidizer_csgen`)
+- **Python** (`oxidizer_pygen`)
 
 ## Features
 
-- **Zero boilerplate** - Annotate Rust code, generate C# bindings in one step
-- **Async support** - Rust async functions become C# `Task<T>` methods
-- **Owned types** - Safe transfer of heap-allocated Rust objects with automatic cleanup via `IDisposable`
-- **Slice types** - Multiple patterns for different ownership scenarios:
-  - `OwnedSlice<T>` - Transfer `Vec` ownership to C#
-  - `FFISlice<T>` / `FFISliceMut<T>` - Borrow slices from C#
-  - `SliceCallback<T>` - Safe scoped access to Rust data via callback
-- **Type safety** - Generic wrappers preserve type information across the FFI boundary
+- **Language-agnostic core** - reflection metadata and FFI primitives are shared across generators
+- **Multi-language codegen** - generate C# and/or Python from the same Rust API surface
+- **Async support** - Rust async functions map to C# `Task<T>` and Python `async def`
+- **Ownership-aware FFI types**:
+  - `Owned<T>` - opaque owned handle
+  - `OwnedSlice<T>` - transfer `Vec<T>` ownership across FFI
+  - `FFISlice<T>` / `FFISliceMut<T>` - borrowed slice input from caller
+  - `SliceCallback<T>` - scoped callback access to Rust-owned slice data
 
 ## Installation
 
-Add to your `Cargo.toml`:
+Add Oxidizer from GitHub plus whichever generators you need:
 
 ```toml
 [dependencies]
-oxidizer = "0.1"
+oxidizer = { git = "https://github.com/rinz13r/oxidizer", package = "oxidizer" }
 
 [build-dependencies]
-oxidizer_csgen = "0.1"
+oxidizer_csgen = { git = "https://github.com/rinz13r/oxidizer", package = "oxidizer_csgen" } # C# generator (optional)
+oxidizer_pygen = { git = "https://github.com/rinz13r/oxidizer", package = "oxidizer_pygen" } # Python generator (optional)
 ```
 
 ## Quick Start
 
-### 1. Annotate Rust Types and Functions
+### 1. Annotate Rust types and functions
 
 ```rust
 use oxidizer::prelude::*;
@@ -40,17 +47,29 @@ pub struct Point {
 
 #[ffi_function]
 fn add_points(a: Point, b: Point) -> Point {
-    Point { x: a.x + b.x, y: a.y + b.y }
+    Point {
+        x: a.x + b.x,
+        y: a.y + b.y,
+    }
 }
 ```
 
-### 2. Generate C# Bindings
+### 2. Register API and generate bindings
 
-Create a registry and generate bindings (typically in `build.rs` or a separate crate):
+Typically done in `build.rs` (or a dedicated bindings crate):
 
 ```rust
 use oxidizer::Registry;
 use oxidizer_csgen::CSharpGenerator;
+use oxidizer_pygen::PythonGenerator;
+
+fn native_library_filename(base_name: &str) -> String {
+    match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("windows") => format!("{base_name}.dll"),
+        Ok("macos") => format!("lib{base_name}.dylib"),
+        _ => format!("lib{base_name}.so"),
+    }
+}
 
 fn main() {
     let mut registry = Registry::new();
@@ -58,12 +77,26 @@ fn main() {
         .register_type::<Point>()
         .register_function::<add_points>();
 
-    let cs_code = CSharpGenerator::generate_csharp(&registry, "my_lib");
-    std::fs::write("Generated.cs", cs_code).unwrap();
+    // C#
+    let csharp_code = CSharpGenerator::builder()
+        .library_name("my_lib")
+        .namespace("MyCompany.Interop")
+        .build()
+        .generate_csharp(&registry);
+    std::fs::write("Generated.cs", csharp_code).unwrap();
+
+    // Python
+    let python_code = PythonGenerator::builder()
+        .library_name(native_library_filename("my_lib"))
+        .build()
+        .generate_python(&registry);
+    std::fs::write("Generated.py", python_code).unwrap();
 }
 ```
 
-### 3. Use in C#
+### 3. Consume generated bindings
+
+**C#**
 
 ```csharp
 var result = Bindings.AddPoints(
@@ -73,9 +106,18 @@ var result = Bindings.AddPoints(
 Console.WriteLine($"Result: ({result.X}, {result.Y})");
 ```
 
+**Python**
+
+```python
+from Generated import Point, add_points
+
+result = add_points(Point(x=1.0, y=2.0), Point(x=3.0, y=4.0))
+print(f"Result: ({result.x}, {result.y})")
+```
+
 ## Async Functions
 
-Rust async functions are transformed into callback-based FFI and wrapped as C# `Task<T>`:
+Rust async functions are exported as callback-based FFI and wrapped into idiomatic target APIs:
 
 ```rust
 use oxidizer::prelude::*;
@@ -91,157 +133,77 @@ async fn fetch_data(id: u64) -> u64 {
 }
 ```
 
-C# receives an idiomatic async API:
-
-```csharp
-ulong result = await Bindings.FetchData(42);
-```
+- C#: `Task<ulong>` (e.g. `await Bindings.FetchData(42)`)
+- Python: coroutine (e.g. `await fetch_data(42)`)
 
 ## Marker Types (Opaque Handles)
 
-Use `#[ffi_type(marker)]` for types that should be opaque to C#. The generated C# code contains an empty marker struct, and values are wrapped with `Owned<T>` on the Rust side:
+Use `#[ffi_type(marker)]` for opaque Rust types that should not expose fields in generated bindings.
+Values cross the boundary as `Owned<T>`.
 
-```rust
-#[ffi_type(marker)]
-pub struct DatabaseConnection {
-    handle: *mut c_void,
-    // ... internal state
-}
+Generated API shape:
 
-#[ffi_function]
-fn connect(url: &str) -> Owned<DatabaseConnection> {
-    Owned::new(DatabaseConnection { /* ... */ })
-}
-
-#[ffi_function]
-fn query(conn: Owned<DatabaseConnection>) {
-    // Use connection...
-}
-```
-
-C# receives a type-safe `OwnedHandle<T>` with automatic cleanup:
-
-```csharp
-using var conn = Bindings.Connect("localhost");
-Bindings.Query(conn);
-// Automatically calls Rust drop when disposed
-```
+- C#: `OwnedHandle<T>` with `IDisposable`
+- Python: `OwnedHandle` with context-manager semantics (`with ...:`)
 
 ## Slice Types
 
-### OwnedSlice - Transfer Vec Ownership
+- `OwnedSlice<T>`: transfer owned arrays from Rust to caller
+- `FFISlice<T>` / `FFISliceMut<T>`: pass borrowed caller memory into Rust
+- `SliceCallback<T>`: invoke caller callback with scoped slice access
 
-```rust
-#[ffi_function]
-fn get_numbers() -> OwnedSlice<u64> {
-    OwnedSlice::from_vec(vec![1, 2, 3, 4, 5])
-}
-```
-
-```csharp
-using var numbers = Bindings.GetNumbers();
-foreach (var n in numbers.AsSpan()) {
-    Console.WriteLine(n);
-}
-```
-
-### FFISlice - Borrow from C#
-
-```rust
-#[ffi_function]
-fn sum_numbers(data: FFISlice<u64>) -> u64 {
-    unsafe { data.as_slice().iter().sum() }
-}
-```
-
-```csharp
-Span<ulong> data = stackalloc ulong[] { 1, 2, 3, 4, 5 };
-ulong sum = Bindings.SumNumbers(data);
-```
-
-### SliceCallback - Safe Scoped Access
-
-When Rust needs to provide slice data to C#, use `SliceCallback` for safe scoped access:
-
-```rust
-#[ffi_function]
-fn with_data(callback: SliceCallback<u64>) {
-    let data = vec![1, 2, 3, 4, 5];
-    callback.call(&data);
-}
-```
-
-```csharp
-ulong sum = 0;
-Bindings.WithData((ReadOnlySpan<ulong> slice) => {
-    foreach (var n in slice) sum += n;
-});
-```
+Generated wrappers expose ergonomic accessors such as spans/indexers in C# and helper handle classes in Python.
 
 ## Crate Structure
 
 | Crate | Purpose |
 |-------|---------|
-| `oxidizer` | Facade crate re-exporting core/macro/utils APIs only |
-| `oxidizer_core` | Core traits (`ReflectType`, `ReflectFunction`) and metadata types (`TypeInfo`, `FunctionInfo`) |
+| `oxidizer` | Facade crate re-exporting core/macro/utils APIs |
+| `oxidizer_core` | Core traits (`ReflectType`, `ReflectFunction`) and metadata (`TypeInfo`, `FunctionInfo`, `TypeKind`) |
 | `oxidizer_macro` | Proc macros: `#[ffi_type]`, `#[ffi_function]`, `#[ffi_type(marker)]` |
 | `oxidizer_utils` | FFI primitives: `Owned`, `OwnedSlice`, `FFISlice`, `FFISliceMut`, `SliceCallback` |
-| `oxidizer_csgen` | C# code generator (`CSharpGenerator`) |
+| `oxidizer_csgen` | C# generator (`CSharpGenerator`) |
+| `oxidizer_pygen` | Python generator (`PythonGenerator`) |
 
-## Building
+## Building and Testing
 
 ```bash
-cargo build                  # Build core crates
-cargo build --workspace      # Build everything including examples
-cargo test --workspace       # Run all tests
+cargo build                  # Build default workspace members
+cargo build --workspace      # Build all crates including E2E crates
+cargo test --workspace       # Run all Rust tests
 ```
 
-## Example Project
-
-The `examples/` directory contains a complete workflow:
-
-```
-examples/
-  rust_lib/           # Rust cdylib with FFI exports
-  bindings-generator/ # Generates C# bindings via build.rs
-  DotnetApp/          # .NET console app consuming the bindings
-```
-
-Run the example:
+For full E2E (Rust + generated C# + generated Python):
 
 ```powershell
-# Build Rust library
-cargo build -p rust_lib
-
-# Generate C# bindings
-cargo build -p bindings-generator
-
-# Run .NET app
-dotnet run --project examples/DotnetApp/DotnetApp.csproj
+./run_tests.ps1
 ```
 
-Or use the provided script:
+## E2E Layout
 
-```powershell
-./examples/run.ps1
+```text
+tests/e2e/
+  rust_lib/            # Rust cdylib with exported FFI API
+  bindings-generator/  # Generates Generated.cs + Generated.py
+  dotnet/              # C# integration tests
+  python/              # Python integration tests
 ```
 
-## Type Mapping
+## C# Type Mapping (selected)
 
 | Rust Type | C# Type |
 |-----------|---------|
 | `u8`, `u16`, `u32`, `u64` | `byte`, `ushort`, `uint`, `ulong` |
 | `i8`, `i16`, `i32`, `i64` | `sbyte`, `short`, `int`, `long` |
 | `f32`, `f64` | `float`, `double` |
-| `bool` | `bool` |
-| `usize` | `nuint` |
-| `*const T`, `*mut T` | `nint` / `IntPtr` |
-| `#[ffi_type] struct` | `struct` (LayoutKind.Sequential) |
+| `bool` | `byte` |
+| `*const T`, `*mut T` | `IntPtr` |
+| `#[ffi_type] struct` | `struct` (`LayoutKind.Sequential`) |
 | `Owned<T>` | `OwnedHandle<T>` |
-| `OwnedSlice<T>` | `OwnedArray<T>` |
-| `FFISlice<T>` | `ReadOnlySpan<T>` |
-| `FFISliceMut<T>` | `Span<T>` |
-| `SliceCallback<T>` | `SliceCallbackHandler<T>` |
+| `OwnedSlice<T>` | `OwnedSliceHandle<T>` |
+| `SliceCallback<T>` | `Action<ReadOnlySpan<T>>` |
+
+Python bindings use `ctypes` FFI representations plus ergonomic wrapper classes for owned handles/slices.
 
 ## License
 
