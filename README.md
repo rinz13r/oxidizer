@@ -22,7 +22,7 @@ Add to your `Cargo.toml`:
 oxidizer = "0.1"
 
 [build-dependencies]
-oxidizer = { version = "0.1", features = ["csgen"] }
+oxidizer_csgen = "0.1"
 ```
 
 ## Quick Start
@@ -49,7 +49,8 @@ fn add_points(a: Point, b: Point) -> Point {
 Create a registry and generate bindings (typically in `build.rs` or a separate crate):
 
 ```rust
-use oxidizer::{Registry, csgen::CSharpGenerator};
+use oxidizer::Registry;
+use oxidizer_csgen::CSharpGenerator;
 
 fn main() {
     let mut registry = Registry::new();
@@ -181,7 +182,7 @@ Bindings.WithData((ReadOnlySpan<ulong> slice) => {
 
 | Crate | Purpose |
 |-------|---------|
-| `oxidizer` | Facade crate re-exporting everything; `csgen` feature enables code generation |
+| `oxidizer` | Facade crate re-exporting core/macro/utils APIs only |
 | `oxidizer_core` | Core traits (`ReflectType`, `ReflectFunction`) and metadata types (`TypeInfo`, `FunctionInfo`) |
 | `oxidizer_macro` | Proc macros: `#[ffi_type]`, `#[ffi_function]`, `#[ffi_type(marker)]` |
 | `oxidizer_utils` | FFI primitives: `Owned`, `OwnedSlice`, `FFISlice`, `FFISliceMut`, `SliceCallback` |

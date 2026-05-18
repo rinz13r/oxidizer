@@ -10,7 +10,7 @@ Rust-to-C# FFI binding generator. Annotate Rust types and functions with macros,
 | `oxidizer_macro` | Proc macros: `#[ffi_type]`, `#[ffi_function]`, `#[ffi_type(marker)]` |
 | `oxidizer_utils` | FFI primitives: `Owned`, `OwnedSlice`, `FFISlice`, `FFISliceMut`, `SliceCallback` |
 | `oxidizer_csgen` | C# code generator (`CSharpGenerator`) |
-| `oxidizer` | Facade crate re-exporting everything; `csgen` feature enables code generation |
+| `oxidizer` | Facade crate re-exporting core/macro/utils APIs only |
 
 ## Key Concepts
 
