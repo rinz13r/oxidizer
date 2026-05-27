@@ -171,12 +171,15 @@ Generated wrappers expose ergonomic accessors such as spans/indexers in C# and h
 cargo build                  # Build default workspace members
 cargo build --workspace      # Build all crates including E2E crates
 cargo test --workspace       # Run all Rust tests
+cargo xtask test             # Run unit + E2E tests through the cross-platform runner
+cargo xtask test unit        # Run Rust tests only
+cargo xtask generate-bindings # Generate E2E C# and Python bindings
 ```
 
 For full E2E (Rust + generated C# + generated Python):
 
-```powershell
-./run_tests.ps1
+```bash
+cargo xtask test e2e
 ```
 
 ## E2E Layout
@@ -184,7 +187,7 @@ For full E2E (Rust + generated C# + generated Python):
 ```text
 tests/e2e/
   rust_lib/            # Rust cdylib with exported FFI API
-  bindings-generator/  # Generates Generated.cs + Generated.py
+  bindings-generator/  # Generates target/generated/e2e/Generated.cs + Generated.py
   dotnet/              # C# integration tests
   python/              # Python integration tests
 ```

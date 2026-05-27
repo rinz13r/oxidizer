@@ -31,4 +31,4 @@ cargo test --workspace       # Run all tests
 
 ## E2E Tests
 
-See `tests/e2e/` — run with `./run_tests.ps1`. Contains `rust_lib` (Rust FFI library), `bindings-generator` (generates C#/Python bindings), and `dotnet`/`python` test projects.
+See `tests/e2e/` — run with `cargo xtask test e2e`. Contains `rust_lib` (Rust FFI library), `bindings-generator` (generates C#/Python bindings), and `dotnet`/`python` test projects.

@@ -10,7 +10,10 @@ members = [
 
     # E2E test crates
     "tests/e2e/rust_lib",
-    "tests/e2e/bindings-generator"
+    "tests/e2e/bindings-generator",
+
+    # Workspace automation
+    "xtask"
 ]
 
 default-members = [
